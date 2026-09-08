@@ -7,7 +7,7 @@ import type { ComfyUISystemStats } from '@/types/comfyui';
 import type { WSConnectionStatus } from '@/lib/websocket-manager';
 
 export function useComfyUI() {
-  const { comfyuiHost, authHeader } = useSettingsStore();
+  const { authHeader } = useSettingsStore();
   const ws = useWebSocket();
   const [wsStatus, setWsStatus] = useState<WSConnectionStatus>(ws.status);
   const [systemInfo, setSystemInfo] = useState<ComfyUISystemStats | null>(null);

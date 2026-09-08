@@ -102,7 +102,7 @@ export const comfyuiClient = {
     const form = new FormData();
     form.append('image', file);
     form.append('overwrite', 'true');
-    const data = await request<UploadResponse>('upload', {
+    const data = await request<UploadResponse>('upload/image', {
       method: 'POST',
       body: form,
       host,

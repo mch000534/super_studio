@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Trash2, RotateCcw } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Trash2, RotateCcw, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -14,21 +15,45 @@ import {
 } from '@/components/ui/select';
 import { useHistoryStore } from '@/stores/history-store';
 import { useSettingsStore } from '@/stores/settings-store';
+import { useGenerationStore } from '@/stores/generation-store';
 import { MODES, getModeMeta } from '@/lib/modes';
 import { toast } from '@/hooks/use-toast';
+import type { HistoryRecord } from '@/types/workflow';
 
 export default function HistoryPage() {
   const records = useHistoryStore((s) => s.records);
   const removeRecords = useHistoryStore((s) => s.removeRecords);
   const setMode = useSettingsStore((s) => s.setMode);
+  const router = useRouter();
   const [modeFilter, setModeFilter] = useState<string>('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const selectAllRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
     let list = records;
     if (modeFilter !== 'all') list = list.filter((r) => r.mode === modeFilter);
     return [...list].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   }, [records, modeFilter]);
+
+  const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id));
+  const someSelected = filtered.some((r) => selected.has(r.id));
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected && !allSelected;
+    }
+  }, [someSelected, allSelected]);
+
+  const toggleAll = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      filtered.forEach((r) => {
+        if (allSelected) next.delete(r.id);
+        else next.add(r.id);
+      });
+      return next;
+    });
+  };
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -43,7 +68,26 @@ export default function HistoryPage() {
     const rec = records.find((r) => r.id === id);
     if (!rec) return;
     setMode(rec.mode);
+    useGenerationStore.getState().setParams({ ...rec.params, mode: rec.mode });
     toast({ title: '已載入參數', description: `${getModeMeta(rec.mode).label} 模式參數已套用` });
+    router.replace('/');
+  };
+
+  const handleDownload = (rec: HistoryRecord) => {
+    const medias = rec.media;
+    if (medias.length === 0) {
+      toast({ variant: 'destructive', title: '無法下載', description: '此記錄沒有可下載的檔案' });
+      return;
+    }
+    medias.forEach((m, i) => {
+      setTimeout(() => {
+        const a = document.createElement('a');
+        a.href = m.url;
+        a.download = m.filename;
+        a.click();
+      }, i * 300);
+    });
+    toast({ title: '開始下載', description: `共 ${medias.length} 個檔案` });
   };
 
   const handleDelete = () => {
@@ -79,6 +123,20 @@ export default function HistoryPage() {
               ))}
             </SelectContent>
           </Select>
+          {selected.size > 0 && (
+            <Badge variant="secondary">已選 {selected.size} 筆</Badge>
+          )}
+          <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              ref={selectAllRef}
+              checked={allSelected}
+              onChange={toggleAll}
+              disabled={filtered.length === 0}
+              className="h-4 w-4"
+            />
+            全選
+          </label>
           <Button variant="destructive" size="sm" onClick={handleDelete} disabled={selected.size === 0}>
             <Trash2 className="mr-1 h-4 w-4" /> 刪除
           </Button>
@@ -118,6 +176,15 @@ export default function HistoryPage() {
               </div>
               <Button variant="ghost" size="sm" onClick={() => handleReload(rec.id)}>
                 <RotateCcw className="mr-1 h-3.5 w-3.5" /> 載入參數
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleDownload(rec)}
+                disabled={rec.media.length === 0}
+                title="下載此次生成的所有檔案"
+              >
+                <Download className="mr-1 h-3.5 w-3.5" /> 下載
               </Button>
             </li>
           ))}

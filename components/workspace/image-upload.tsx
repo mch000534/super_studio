@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Upload, X, RefreshCw, ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
+import { comfyuiClient } from '@/lib/comfyui-client';
+import { useSettingsStore } from '@/stores/settings-store';
 
 const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp'];
 const ACCEPTED_EXT = ['png', 'jpg', 'jpeg', 'webp'];
@@ -20,8 +22,14 @@ export function ImageUpload({ label, value, onChange, onUpload, expanded = false
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [preview] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { comfyuiHost, authHeader } = useSettingsStore();
+
+  const serverUrl = useMemo(
+    () => (value ? comfyuiClient.getViewUrl(value, comfyuiHost, '', 'input', { authHeader }) : null),
+    [value, comfyuiHost, authHeader]
+  );
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -31,27 +39,31 @@ export function ImageUpload({ label, value, onChange, onUpload, expanded = false
         return;
       }
       setError(null);
+      if (preview) URL.revokeObjectURL(preview);
       const objectUrl = URL.createObjectURL(file);
       try {
         setUploading(true);
         if (onUpload) {
           const name = await onUpload(file);
           onChange({ previewUrl: objectUrl, file: null });
+          setPreview(objectUrl);
           toast({ title: '已上傳', description: `${label}已上傳：${name}` });
         } else {
           onChange({ previewUrl: objectUrl, file });
+          setPreview(objectUrl);
         }
       } catch {
+        URL.revokeObjectURL(objectUrl);
         setError('上傳失敗，請確認 ComfyUI 已連接');
         toast({ variant: 'destructive', title: '上傳失敗' });
       } finally {
         setUploading(false);
       }
     },
-    [label, onChange, onUpload]
+    [label, onChange, onUpload, preview]
   );
 
-  const url = preview || value;
+  const url = preview || serverUrl;
 
   if (url) {
     return (
@@ -97,7 +109,6 @@ export function ImageUpload({ label, value, onChange, onUpload, expanded = false
   return (
     <div className="space-y-2">
       <Label small>{label}</Label>
-      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         onClick={() => inputRef.current?.click()}
         onDragOver={(e) => {

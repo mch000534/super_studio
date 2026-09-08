@@ -35,10 +35,15 @@ function nodeName(nodeId: string): string {
 
 export function useGeneration(onResult?: (media: MediaItem[], mode: Mode) => void) {
   const store = useGenerationStore();
-  const { comfyuiHost, authHeader, currentMode } = useSettingsStore();
+  const { authHeader } = useSettingsStore();
   const ws = useWebSocket();
   const onResultRef = useRef(onResult);
-  onResultRef.current = onResult;
+  const handledPromptRef = useRef<string | null>(null);
+  const fetchInFlightRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    onResultRef.current = onResult;
+  }, [onResult]);
 
   const isBusy = store.status === 'queued' || store.status === 'running';
 
@@ -97,16 +102,6 @@ export function useGeneration(onResult?: (media: MediaItem[], mode: Mode) => voi
     });
     return unsub;
   }, [ws]);
-
-  const uploadMedia = useCallback(
-    async (mode: Mode, params: GenerationParams) => {
-      if (mode === 'img2img' && params.imageName && params.imageName.startsWith('upload:')) {
-        const file = (window as unknown as { __uploadFile?: File }).__uploadFile;
-      }
-      return true;
-    },
-    []
-  );
 
   const submit = useCallback(
     async (overrideParams?: Partial<GenerationParams>) => {
@@ -171,8 +166,12 @@ export function useGeneration(onResult?: (media: MediaItem[], mode: Mode) => voi
     const g = useGenerationStore.getState();
     const settings = useSettingsStore.getState();
     if (!g.promptId) return;
+    if (handledPromptRef.current === g.promptId) return;
+    if (fetchInFlightRef.current === g.promptId) return;
+    fetchInFlightRef.current = g.promptId;
     const host = settings.comfyuiHost;
     const history = await comfyuiClient.getHistory(g.promptId, host, authHeader);
+    fetchInFlightRef.current = null;
     if (!history.ok) return;
 
     const entry = history.data[g.promptId];
@@ -199,6 +198,7 @@ export function useGeneration(onResult?: (media: MediaItem[], mode: Mode) => voi
     });
 
     if (media.length > 0) {
+      handledPromptRef.current = g.promptId;
       onResultRef.current?.(media, g.params.mode);
       g.setStatus('success');
     }

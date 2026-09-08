@@ -122,7 +122,7 @@ function Img2ImgControls({ onInterrupt }: { onInterrupt: () => void }) {
     <div className="space-y-5">
       <ImageUpload
         label="參考影像"
-        value={params.imageName ? 'set' : null}
+        value={params.imageName ?? null}
         onChange={(data) => {
           if (!data) updateParams({ imageName: undefined });
         }}
@@ -169,7 +169,7 @@ function Img2VidControls({ onInterrupt }: { onInterrupt: () => void }) {
       <div className="grid grid-cols-2 gap-3">
         <ImageUpload
           label="首幀影像"
-          value={params.firstFrameName ? 'set' : null}
+          value={params.firstFrameName ?? null}
           onChange={(data) => {
             if (!data) updateParams({ firstFrameName: undefined });
           }}
@@ -177,7 +177,7 @@ function Img2VidControls({ onInterrupt }: { onInterrupt: () => void }) {
         />
         <ImageUpload
           label="尾幀（可選）"
-          value={params.lastFrameName ? 'set' : null}
+          value={params.lastFrameName ?? null}
           onChange={(data) => {
             if (!data) updateParams({ lastFrameName: undefined });
           }}
@@ -212,7 +212,7 @@ function ImgUpscaleControls({ onInterrupt }: { onInterrupt: () => void }) {
       <SourcePicker kind="image" onSelect={(name) => updateParams({ imageName: name })} />
       <ImageUpload
         label="或上傳來源圖片"
-        value={params.imageName ? 'set' : null}
+        value={params.imageName ?? null}
         onChange={(data) => {
           if (!data) updateParams({ imageName: undefined });
         }}

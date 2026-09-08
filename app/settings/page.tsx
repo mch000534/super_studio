@@ -1,3 +1,5 @@
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ComfyUIConfig } from '@/components/settings/comfyui-config';
 import { ThemeSettings } from '@/components/settings/theme-settings';
@@ -5,7 +7,16 @@ import { ThemeSettings } from '@/components/settings/theme-settings';
 export default function SettingsPage() {
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
-      <h1 className="text-2xl font-semibold">設定</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">設定</h1>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          返回工作台
+        </Link>
+      </div>
 
       <Card>
         <CardHeader>

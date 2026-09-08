@@ -50,20 +50,22 @@ async function proxyRequest(req: NextRequest, path: string) {
   });
 }
 
-export async function GET(req: NextRequest, { params }: { params: { path: string[] } }) {
-  const path = params.path.join('/');
+type RouteContext = { params: Promise<{ path: string[] }> };
+
+export async function GET(req: NextRequest, ctx: RouteContext) {
+  const { path } = await ctx.params;
   const search = req.nextUrl.search;
-  return proxyRequest(req, `${path}${search}`);
+  return proxyRequest(req, `${path.join('/')}${search}`);
 }
 
-export async function POST(req: NextRequest, { params }: { params: { path: string[] } }) {
-  const path = params.path.join('/');
+export async function POST(req: NextRequest, ctx: RouteContext) {
+  const { path } = await ctx.params;
   const search = req.nextUrl.search;
-  return proxyRequest(req, `${path}${search}`);
+  return proxyRequest(req, `${path.join('/')}${search}`);
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { path: string[] } }) {
-  const path = params.path.join('/');
+export async function PUT(req: NextRequest, ctx: RouteContext) {
+  const { path } = await ctx.params;
   const search = req.nextUrl.search;
-  return proxyRequest(req, `${path}${search}`);
+  return proxyRequest(req, `${path.join('/')}${search}`);
 }

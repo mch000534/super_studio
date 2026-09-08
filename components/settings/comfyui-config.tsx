@@ -4,16 +4,23 @@ import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Loader2, Plug, Save } from 'lucide-react';
+import { CheckCircle2, Loader2, Plug, Save, XCircle } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settings-store';
 import { useComfyUI } from '@/hooks/use-comfyui';
 import { SystemInfo } from '@/components/settings/system-info';
 import { toast } from '@/hooks/use-toast';
 
+interface TestResult {
+  ok: boolean;
+  ms: number;
+  host: string;
+}
+
 export function ComfyUIConfig() {
   const { comfyuiHost, setHost } = useSettingsStore();
   const { testConnection, testing, testError, systemInfo } = useComfyUI();
   const [hostDraft, setHostDraft] = useState(comfyuiHost);
+  const [lastResult, setLastResult] = useState<TestResult | null>(null);
 
   const handleSave = () => {
     const h = hostDraft.trim().replace(/\/+$/, '');
@@ -22,15 +29,20 @@ export function ComfyUIConfig() {
   };
 
   const handleTest = async () => {
-    setHost(hostDraft.trim().replace(/\/+$/, ''));
+    const h = hostDraft.trim().replace(/\/+$/, '');
+    setHost(h);
+    setLastResult(null);
+    const t0 = Date.now();
     const ok = await testConnection();
+    const ms = Date.now() - t0;
+    setLastResult({ ok, ms, host: h });
     if (ok) {
       toast({ title: '連接成功', description: 'ComfyUI 可正常連線' });
     } else {
       toast({
         variant: 'destructive',
         title: '連接失敗',
-        description: (systemInfo ? '' : '無法連接到') + ' ComfyUI，請檢查地址與服務狀態',
+        description: '無法連接到 ComfyUI，請檢查地址與服務狀態',
       });
     }
   };
@@ -59,7 +71,23 @@ export function ComfyUIConfig() {
         </Button>
       </div>
 
-      {testError && <p className="text-sm text-destructive">{testError}</p>}
+      {lastResult && (
+        <div className="flex items-center gap-2 text-sm">
+          {lastResult.ok ? (
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+          ) : (
+            <XCircle className="h-4 w-4 shrink-0 text-destructive" />
+          )}
+          <span className={lastResult.ok ? 'text-success' : 'text-destructive'}>
+            {lastResult.ok ? `連接成功（${lastResult.ms}ms）` : '連接失敗，請檢查地址與服務狀態'}
+          </span>
+          {lastResult.host && (
+            <span className="truncate text-xs text-muted-foreground">{lastResult.host}</span>
+          )}
+        </div>
+      )}
+
+      {!lastResult && testError && <p className="text-sm text-destructive">{testError}</p>}
       {systemInfo && <SystemInfo info={systemInfo} />}
     </div>
   );

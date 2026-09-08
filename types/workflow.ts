@@ -1,5 +1,3 @@
-import type { FileInfo } from '@/types/comfyui';
-
 export type Mode =
   | 'text2img'
   | 'img2img'
