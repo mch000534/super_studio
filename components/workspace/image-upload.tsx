@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import { comfyuiClient } from '@/lib/comfyui-client';
 import { useSettingsStore } from '@/stores/settings-store';
+import { useGalleryStore } from '@/stores/gallery-store';
 
 const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp'];
 const ACCEPTED_EXT = ['png', 'jpg', 'jpeg', 'webp'];
@@ -25,11 +26,14 @@ export function ImageUpload({ label, value, onChange, onUpload, expanded = false
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { comfyuiHost, authHeader } = useSettingsStore();
-
-  const serverUrl = useMemo(
-    () => (value ? comfyuiClient.getViewUrl(value, comfyuiHost, '', 'input', { authHeader }) : null),
-    [value, comfyuiHost, authHeader]
+  const galleryItem = useGalleryStore(
+    (s) => (value ? s.items.find((i) => i.kind === 'image' && i.filename === value) : undefined)
   );
+  const serverUrl = useMemo(() => {
+    if (!value) return null;
+    if (galleryItem?.url) return galleryItem.url;
+    return comfyuiClient.getViewUrl(value, comfyuiHost, '', 'input', { authHeader });
+  }, [value, galleryItem, comfyuiHost, authHeader]);
 
   const handleFile = useCallback(
     async (file: File) => {

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useGalleryStore } from '@/stores/gallery-store';
 import type { HistoryRecord } from '@/types/workflow';
 
 function recordSignature(record: HistoryRecord): string {
@@ -41,9 +42,21 @@ export const useHistoryStore = create<HistoryState>()(
           const existing = dedupeRecords([record, ...s.records]).slice(0, 500);
           return { records: existing };
         }),
-      removeRecords: (ids) =>
-        set((s) => ({ records: s.records.filter((r) => !ids.includes(r.id)) })),
-      clear: () => set({ records: [] }),
+      removeRecords: (ids) => {
+        const all = useHistoryStore.getState().records;
+        const removed = all.filter((r) => ids.includes(r.id));
+        const remaining = all.filter((r) => !ids.includes(r.id));
+        set({ records: remaining });
+        const kept = new Set(remaining.flatMap((r) => r.media ?? []).map((m) => m.url));
+        const orphans = [...new Set(removed.flatMap((r) => r.media ?? []).map((m) => m.url))].filter(
+          (u) => !kept.has(u)
+        );
+        if (orphans.length > 0) useGalleryStore.getState().removeItems(orphans);
+      },
+      clear: () => {
+        set({ records: [] });
+        useGalleryStore.getState().clear();
+      },
     }),
     {
       name: 'super-studio-history',

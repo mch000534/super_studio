@@ -4,11 +4,11 @@ import { useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { useGalleryStore } from '@/stores/gallery-store';
-import type { MediaKind } from '@/types/workflow';
+import type { MediaItem, MediaKind } from '@/types/workflow';
 
 interface SourcePickerProps {
   kind: MediaKind;
-  onSelect: (name: string) => void;
+  onSelect: (item: MediaItem) => void;
 }
 
 export function SourcePicker({ kind, onSelect }: SourcePickerProps) {
@@ -38,7 +38,7 @@ export function SourcePicker({ kind, onSelect }: SourcePickerProps) {
               key={item.url}
               onClick={() => {
                 setSelected(item.filename);
-                onSelect(item.filename);
+                onSelect(item);
               }}
               className={cn(
                 'relative overflow-hidden rounded-md border',

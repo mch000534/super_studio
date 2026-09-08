@@ -21,6 +21,26 @@ import { getModeMeta } from '@/lib/modes';
 import { toast } from '@/hooks/use-toast';
 import type { MediaItem, Mode } from '@/types/workflow';
 
+async function ensureInputRef(
+  item: MediaItem,
+  host: string,
+  authHeader?: string
+): Promise<{ ok: true; name: string } | { ok: false; message: string }> {
+  if (item.type === 'input' && !item.subfolder) {
+    return { ok: true, name: item.filename };
+  }
+  try {
+    const res = await fetch(item.url);
+    if (!res.ok) throw new Error(`無法讀取來源圖片（HTTP ${res.status}）`);
+    const blob = await res.blob();
+    const file = new File([blob], item.filename, { type: blob.type || 'image/png' });
+    const r = await comfyuiClient.uploadImage(file, host, authHeader);
+    return r.ok ? { ok: true, name: r.data.name } : { ok: false, message: r.error.message };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : '圖片轉換失敗' };
+  }
+}
+
 export function RightPanel() {
   const currentMode = useSettingsStore((s) => s.currentMode);
   const addItems = useGalleryStore((s) => s.addItems);
@@ -118,8 +138,21 @@ function Img2ImgControls({ onInterrupt }: { onInterrupt: () => void }) {
     throw new Error(r.error.message);
   };
 
+  const handleSourceSelect = async (item: MediaItem) => {
+    const r = await ensureInputRef(item, comfyuiHost, authHeader);
+    if (r.ok) {
+      updateParams({ imageName: r.name });
+      if (item.type !== 'input' || item.subfolder) {
+        toast({ title: '已轉為參考影像', description: '來源圖片已上傳至 ComfyUI input' });
+      }
+      return;
+    }
+    toast({ variant: 'destructive', title: '選取失敗', description: r.message });
+  };
+
   return (
     <div className="space-y-5">
+      <SourcePicker kind="image" onSelect={handleSourceSelect} />
       <ImageUpload
         label="參考影像"
         value={params.imageName ?? null}
@@ -207,9 +240,21 @@ function ImgUpscaleControls({ onInterrupt }: { onInterrupt: () => void }) {
     throw new Error(r.error.message);
   };
 
+  const handleSourceSelect = async (item: MediaItem) => {
+    const r = await ensureInputRef(item, comfyuiHost, authHeader);
+    if (r.ok) {
+      updateParams({ imageName: r.name });
+      if (item.type !== 'input' || item.subfolder) {
+        toast({ title: '已轉為參考影像', description: '來源圖片已上傳至 ComfyUI input' });
+      }
+      return;
+    }
+    toast({ variant: 'destructive', title: '選取失敗', description: r.message });
+  };
+
   return (
     <div className="space-y-5">
-      <SourcePicker kind="image" onSelect={(name) => updateParams({ imageName: name })} />
+      <SourcePicker kind="image" onSelect={handleSourceSelect} />
       <ImageUpload
         label="或上傳來源圖片"
         value={params.imageName ?? null}
@@ -247,7 +292,7 @@ function VidUpscaleControls({ onInterrupt }: { onInterrupt: () => void }) {
 
   return (
     <div className="space-y-5">
-      <SourcePicker kind="video" onSelect={(name) => updateParams({ imageName: name })} />
+      <SourcePicker kind="video" onSelect={(item) => updateParams({ imageName: item.filename })} />
       <ImageUpload
         label="或上傳來源影片"
         value={params.imageName ? 'set' : null}
