@@ -1,5 +1,7 @@
 'use client';
 
+import { useCallback, useEffect } from 'react';
+
 import { PromptPanel } from '@/components/workspace/prompt-panel';
 import { ParameterControls } from '@/components/workspace/parameter-controls';
 import { GenerationControls } from '@/components/workspace/generation-controls';
@@ -11,7 +13,7 @@ import { UpscaleControls } from '@/components/workspace/upscale-controls';
 import { CustomWorkflowPanel } from '@/components/workflow/custom-workflow-panel';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
-import { useGeneration } from '@/hooks/use-generation';
+import { useGeneration, setResultHandler } from '@/hooks/use-generation';
 import { useSettingsStore } from '@/stores/settings-store';
 import { useGalleryStore } from '@/stores/gallery-store';
 import { useHistoryStore } from '@/stores/history-store';
@@ -19,7 +21,7 @@ import { useGenerationStore } from '@/stores/generation-store';
 import { comfyuiClient } from '@/lib/comfyui-client';
 import { getModeMeta } from '@/lib/modes';
 import { toast } from '@/hooks/use-toast';
-import type { MediaItem, Mode } from '@/types/workflow';
+import type { MediaItem, Mode, GenerationParams } from '@/types/workflow';
 
 async function ensureInputRef(
   item: MediaItem,
@@ -46,9 +48,8 @@ export function RightPanel() {
   const addItems = useGalleryStore((s) => s.addItems);
   const addRecord = useHistoryStore((s) => s.addRecord);
 
-  const handleResult = (media: MediaItem[], mode: Mode) => {
+  const handleResult = useCallback((media: MediaItem[], mode: Mode, params: GenerationParams) => {
     addItems(media);
-    const params = useGenerationStore.getState().params;
     addRecord({
       id: `h_${Date.now()}`,
       timestamp: new Date().toISOString(),
@@ -59,9 +60,13 @@ export function RightPanel() {
       media,
     });
     toast({ title: '生成完成', description: `已新增 ${media.length} 個結果` });
-  };
+  }, [addItems, addRecord]);
 
-  const { submit, interrupt } = useGeneration(handleResult);
+  const { submit, interrupt } = useGeneration();
+
+  useEffect(() => {
+    setResultHandler(handleResult);
+  }, [handleResult]);
 
   const onGenerate = () => submit();
 

@@ -33,17 +33,25 @@ function nodeName(nodeId: string): string {
   return NODE_NAMES[nodeId] || `節點 #${nodeId}`;
 }
 
-export function useGeneration(onResult?: (media: MediaItem[], mode: Mode) => void) {
+function randomSeed(): number {
+  return Math.floor(Math.random() * 0x7fffffff);
+}
+
+let globalResultHandler: ((media: MediaItem[], mode: Mode, params: GenerationParams) => void) | null =
+  null;
+
+export function setResultHandler(
+  handler: (media: MediaItem[], mode: Mode, params: GenerationParams) => void
+): void {
+  globalResultHandler = handler;
+}
+
+export function useGeneration() {
   const store = useGenerationStore();
   const { authHeader } = useSettingsStore();
   const ws = useWebSocket();
-  const onResultRef = useRef(onResult);
-  const handledPromptRef = useRef<string | null>(null);
-  const fetchInFlightRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    onResultRef.current = onResult;
-  }, [onResult]);
+  const pendingPromptIdsRef = useRef<Set<string>>(new Set());
+  const promptParamsRef = useRef<Map<string, GenerationParams>>(new Map());
 
   const isBusy = store.status === 'queued' || store.status === 'running';
 
@@ -119,17 +127,6 @@ export function useGeneration(onResult?: (media: MediaItem[], mode: Mode) => voi
       g.setParams(params);
       g.setStatus('queued');
 
-      let workflow = buildWorkflow(mode, params);
-
-      if (mode === 'custom') {
-        workflow = params.customWorkflow as Record<string, never>;
-        if (!workflow || Object.keys(workflow).length === 0) {
-          g.setError('尚未載入自定義工作流');
-          g.setStatus('error');
-          return;
-        }
-      }
-
       const clientId = ws.clientId;
       const host = settings.comfyuiHost;
       if (!host) {
@@ -138,14 +135,50 @@ export function useGeneration(onResult?: (media: MediaItem[], mode: Mode) => voi
         return;
       }
 
-      const result = await comfyuiClient.queuePrompt(workflow, clientId, host, authHeader);
-      if (!result.ok) {
-        g.setStatus('error');
-        g.setError(resolveError(result.error.message, result.error.nodeErrors));
-        return;
+      pendingPromptIdsRef.current = new Set();
+      promptParamsRef.current = new Map();
+
+      const isBatchMode = mode === 'text2img';
+      const count = isBatchMode && params.batch > 1 ? params.batch : 1;
+      const randomize = mode !== 'custom' && (params.seed === -1 || count > 1);
+
+      const pending = new Set<string>();
+      const paramsMap = new Map<string, GenerationParams>();
+
+      for (let i = 0; i < count; i++) {
+        const seed = randomize ? randomSeed() : params.seed;
+        const itemParams: GenerationParams = {
+          ...params,
+          seed,
+          ...(count > 1 ? { batch: 1 } : {}),
+        };
+
+        let workflow = buildWorkflow(mode, itemParams);
+        if (mode === 'custom') {
+          workflow = itemParams.customWorkflow as Record<string, never>;
+          if (!workflow || Object.keys(workflow).length === 0) {
+            g.setError('尚未載入自定義工作流');
+            g.setStatus('error');
+            return;
+          }
+        }
+
+        const result = await comfyuiClient.queuePrompt(workflow, clientId, host, authHeader);
+        if (!result.ok) {
+          g.setStatus('error');
+          g.setError(resolveError(result.error.message, result.error.nodeErrors));
+          if (i === 0) return;
+          break;
+        }
+
+        pending.add(result.data.prompt_id);
+        paramsMap.set(result.data.prompt_id, itemParams);
       }
 
-      g.setPromptId(result.data.prompt_id);
+      if (pending.size === 0) return;
+      pendingPromptIdsRef.current = pending;
+      promptParamsRef.current = paramsMap;
+      g.setPromptId([...pending][0]);
       g.setStatus('running');
     },
     [ws.clientId, authHeader]
@@ -162,58 +195,59 @@ export function useGeneration(onResult?: (media: MediaItem[], mode: Mode) => voi
     g.setInterruptRequested(false);
   }, [authHeader]);
 
-  const fetchResult = useCallback(async () => {
-    const g = useGenerationStore.getState();
-    const settings = useSettingsStore.getState();
-    if (!g.promptId) return;
-    if (handledPromptRef.current === g.promptId) return;
-    if (fetchInFlightRef.current === g.promptId) return;
-    fetchInFlightRef.current = g.promptId;
-    const host = settings.comfyuiHost;
-    const history = await comfyuiClient.getHistory(g.promptId, host, authHeader);
-    fetchInFlightRef.current = null;
-    if (!history.ok) return;
+  const fetchResult = useCallback(
+    async (promptId: string) => {
+      const settings = useSettingsStore.getState();
+      const pending = pendingPromptIdsRef.current;
+      if (!pending.has(promptId)) return;
+      pending.delete(promptId);
+      const host = settings.comfyuiHost;
+      const history = await comfyuiClient.getHistory(promptId, host, authHeader);
+      if (!history.ok) return;
 
-    const entry = history.data[g.promptId];
-    if (!entry) return;
+      const entry = history.data[promptId];
+      if (!entry) return;
 
-    const media: MediaItem[] = [];
-    Object.values(entry.outputs || {}).forEach((output) => {
-      const collect = (files: FileInfo[] | undefined, kind: 'image' | 'video') => {
-        (files || []).forEach((f) => {
-          media.push({
-            filename: f.filename,
-            subfolder: f.subfolder,
-            type: f.type,
-            kind,
-            url: comfyuiClient.getViewUrl(f.filename, host, f.subfolder, f.type, {
-              authHeader,
-            }),
-            timestamp: Date.now(),
+      const media: MediaItem[] = [];
+      Object.values(entry.outputs || {}).forEach((output) => {
+        const collect = (files: FileInfo[] | undefined, kind: 'image' | 'video') => {
+          (files || []).forEach((f) => {
+            media.push({
+              filename: f.filename,
+              subfolder: f.subfolder,
+              type: f.type,
+              kind,
+              url: comfyuiClient.getViewUrl(f.filename, host, f.subfolder, f.type, {
+                authHeader,
+              }),
+              timestamp: Date.now(),
+            });
           });
-        });
-      };
-      collect(output.images, 'image');
-      collect(output.gifs, 'video');
-    });
+        };
+        collect(output.images, 'image');
+        collect(output.gifs, 'video');
+      });
 
-    if (media.length > 0) {
-      handledPromptRef.current = g.promptId;
-      onResultRef.current?.(media, g.params.mode);
-      g.setStatus('success');
-    }
-  }, [authHeader]);
+      const g = useGenerationStore.getState();
+      if (media.length > 0) {
+        const recParams = promptParamsRef.current.get(promptId);
+        globalResultHandler?.(media, recParams?.mode ?? g.params.mode, recParams ?? g.params);
+        g.setStatus('success');
+      }
+      promptParamsRef.current.delete(promptId);
+    },
+    [authHeader]
+  );
 
   useEffect(() => {
     const unsub = ws.onEvent((event) => {
       if (event.type === 'execution_success' || event.type === 'executing') {
         const data = event.data as { prompt_id?: string; node?: string | null };
-        const g = useGenerationStore.getState();
-        if (event.type === 'execution_success' && g.promptId === data.prompt_id) {
-          fetchResult();
+        if (event.type === 'execution_success' && data.prompt_id) {
+          fetchResult(data.prompt_id);
         }
-        if (event.type === 'executing' && data.node === null && g.promptId === data.prompt_id) {
-          fetchResult();
+        if (event.type === 'executing' && data.node === null && data.prompt_id) {
+          fetchResult(data.prompt_id);
         }
       }
     });
@@ -221,6 +255,8 @@ export function useGeneration(onResult?: (media: MediaItem[], mode: Mode) => voi
   }, [ws, fetchResult]);
 
   const reset = useCallback(() => {
+    pendingPromptIdsRef.current = new Set();
+    promptParamsRef.current = new Map();
     useGenerationStore.getState().resetGeneration();
   }, []);
 

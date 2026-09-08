@@ -114,6 +114,11 @@ export function ParameterControls() {
             <Dices className="h-4 w-4" />
           </button>
         </div>
+        <p className="text-xs text-muted-foreground">
+          {params.seed === -1 || params.batch > 1
+            ? '每次生成將自動使用隨機種子'
+            : 'seed 為 -1 或批次>1 時自動使用隨機種子'}
+        </p>
       </div>
 
       <div className="space-y-1.5">
