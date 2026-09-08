@@ -1,0 +1,269 @@
+'use client';
+
+import { PromptPanel } from '@/components/workspace/prompt-panel';
+import { ParameterControls } from '@/components/workspace/parameter-controls';
+import { GenerationControls } from '@/components/workspace/generation-controls';
+import { VideoControls } from '@/components/workspace/video-controls';
+import { ImageUpload } from '@/components/workspace/image-upload';
+import { ModelSelector } from '@/components/workspace/model-selector';
+import { SourcePicker } from '@/components/workspace/source-picker';
+import { UpscaleControls } from '@/components/workspace/upscale-controls';
+import { CustomWorkflowPanel } from '@/components/workflow/custom-workflow-panel';
+import { Slider } from '@/components/ui/slider';
+import { Separator } from '@/components/ui/separator';
+import { useGeneration } from '@/hooks/use-generation';
+import { useSettingsStore } from '@/stores/settings-store';
+import { useGalleryStore } from '@/stores/gallery-store';
+import { useHistoryStore } from '@/stores/history-store';
+import { useGenerationStore } from '@/stores/generation-store';
+import { comfyuiClient } from '@/lib/comfyui-client';
+import { getModeMeta } from '@/lib/modes';
+import { toast } from '@/hooks/use-toast';
+import type { MediaItem, Mode } from '@/types/workflow';
+
+export function RightPanel() {
+  const currentMode = useSettingsStore((s) => s.currentMode);
+  const addItems = useGalleryStore((s) => s.addItems);
+  const addRecord = useHistoryStore((s) => s.addRecord);
+
+  const handleResult = (media: MediaItem[], mode: Mode) => {
+    addItems(media);
+    const params = useGenerationStore.getState().params;
+    addRecord({
+      id: `h_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      mode,
+      prompt: params.prompt,
+      params,
+      thumbnail: media[0]?.url || '',
+      media,
+    });
+    toast({ title: '生成完成', description: `已新增 ${media.length} 個結果` });
+  };
+
+  const { submit, interrupt } = useGeneration(handleResult);
+
+  const onGenerate = () => submit();
+
+  return (
+    <div className="w-full border-l p-4 md:w-80 lg:w-96">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold">{getModeMeta(currentMode).label}</h2>
+        <span className="hidden text-xs text-muted-foreground lg:block">
+          {getModeMeta(currentMode).description}
+        </span>
+      </div>
+      <PanelContent mode={currentMode} onGenerate={onGenerate} onInterrupt={interrupt} />
+    </div>
+  );
+}
+
+function PanelContent({
+  mode,
+  onGenerate,
+  onInterrupt,
+}: {
+  mode: Mode;
+  onGenerate: () => void;
+  onInterrupt: () => void;
+}) {
+  switch (mode) {
+    case 'text2img':
+      return (
+        <div className="space-y-5">
+          <PromptPanel />
+          <ModelSelector mode={mode} />
+          <Separator />
+          <ParameterControls />
+          <Separator />
+          <GenerationControls onGenerate={onGenerate} onInterrupt={onInterrupt} />
+        </div>
+      );
+    case 'img2img':
+      return <Img2ImgControls onInterrupt={onInterrupt} />;
+    case 'text2vid':
+      return (
+        <div className="space-y-5">
+          <PromptPanel placeholder="描述動作、鏡頭、氛圍…" />
+          <VideoControls showTurbo={false} />
+          <Separator />
+          <GenerationControls onGenerate={onGenerate} onInterrupt={onInterrupt} label="生成影片" />
+        </div>
+      );
+    case 'img2vid':
+      return <Img2VidControls onInterrupt={onInterrupt} />;
+    case 'img_upscale':
+      return <ImgUpscaleControls onInterrupt={onInterrupt} />;
+    case 'vid_upscale':
+      return <VidUpscaleControls onInterrupt={onInterrupt} />;
+    case 'custom':
+      return <CustomWorkflowPanel />;
+    default:
+      return null;
+  }
+}
+
+function Img2ImgControls({ onInterrupt }: { onInterrupt: () => void }) {
+  const { comfyuiHost, authHeader } = useSettingsStore();
+  const params = useGenerationStore((s) => s.params);
+  const updateParams = useGenerationStore((s) => s.updateParams);
+  const { submit } = useGeneration();
+
+  const handleUpload = async (file: File) => {
+    const r = await comfyuiClient.uploadImage(file, comfyuiHost, authHeader);
+    if (r.ok) {
+      updateParams({ imageName: r.data.name });
+      return r.data.name;
+    }
+    throw new Error(r.error.message);
+  };
+
+  return (
+    <div className="space-y-5">
+      <ImageUpload
+        label="參考影像"
+        value={params.imageName ? 'set' : null}
+        onChange={(data) => {
+          if (!data) updateParams({ imageName: undefined });
+        }}
+        onUpload={handleUpload}
+      />
+      <PromptPanel />
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Denoise</span>
+          <span className="font-mono text-xs text-muted-foreground">{params.denoise ?? 0.6}</span>
+        </div>
+        <Slider
+          min={0}
+          max={1}
+          step={0.05}
+          value={[params.denoise ?? 0.6]}
+          onValueChange={([v]) => updateParams({ denoise: v })}
+        />
+      </div>
+      <ParameterControls />
+      <Separator />
+      <GenerationControls onGenerate={() => submit()} onInterrupt={onInterrupt} />
+    </div>
+  );
+}
+
+function Img2VidControls({ onInterrupt }: { onInterrupt: () => void }) {
+  const { comfyuiHost, authHeader } = useSettingsStore();
+  const params = useGenerationStore((s) => s.params);
+  const updateParams = useGenerationStore((s) => s.updateParams);
+  const { submit } = useGeneration();
+
+  const upload = async (file: File, key: 'firstFrameName' | 'lastFrameName') => {
+    const r = await comfyuiClient.uploadImage(file, comfyuiHost, authHeader);
+    if (r.ok) {
+      updateParams({ [key]: r.data.name });
+      return r.data.name;
+    }
+    throw new Error(r.error.message);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3">
+        <ImageUpload
+          label="首幀影像"
+          value={params.firstFrameName ? 'set' : null}
+          onChange={(data) => {
+            if (!data) updateParams({ firstFrameName: undefined });
+          }}
+          onUpload={(f) => upload(f, 'firstFrameName')}
+        />
+        <ImageUpload
+          label="尾幀（可選）"
+          value={params.lastFrameName ? 'set' : null}
+          onChange={(data) => {
+            if (!data) updateParams({ lastFrameName: undefined });
+          }}
+          onUpload={(f) => upload(f, 'lastFrameName')}
+        />
+      </div>
+      <PromptPanel placeholder="描述動態效果…" />
+      <VideoControls />
+      <Separator />
+      <GenerationControls onGenerate={() => submit()} onInterrupt={onInterrupt} label="生成影片" />
+    </div>
+  );
+}
+
+function ImgUpscaleControls({ onInterrupt }: { onInterrupt: () => void }) {
+  const { comfyuiHost, authHeader } = useSettingsStore();
+  const params = useGenerationStore((s) => s.params);
+  const updateParams = useGenerationStore((s) => s.updateParams);
+  const { submit } = useGeneration();
+
+  const handleUpload = async (file: File) => {
+    const r = await comfyuiClient.uploadImage(file, comfyuiHost, authHeader);
+    if (r.ok) {
+      updateParams({ imageName: r.data.name });
+      return r.data.name;
+    }
+    throw new Error(r.error.message);
+  };
+
+  return (
+    <div className="space-y-5">
+      <SourcePicker kind="image" onSelect={(name) => updateParams({ imageName: name })} />
+      <ImageUpload
+        label="或上傳來源圖片"
+        value={params.imageName ? 'set' : null}
+        onChange={(data) => {
+          if (!data) updateParams({ imageName: undefined });
+        }}
+        onUpload={handleUpload}
+      />
+      <UpscaleControls />
+      <Separator />
+      <GenerationControls
+        onGenerate={() => submit()}
+        onInterrupt={onInterrupt}
+        label="放大圖片"
+        disabled={!params.imageName}
+      />
+    </div>
+  );
+}
+
+function VidUpscaleControls({ onInterrupt }: { onInterrupt: () => void }) {
+  const { comfyuiHost, authHeader } = useSettingsStore();
+  const params = useGenerationStore((s) => s.params);
+  const updateParams = useGenerationStore((s) => s.updateParams);
+  const { submit } = useGeneration();
+
+  const handleUpload = async (file: File) => {
+    const r = await comfyuiClient.uploadVideo(file, comfyuiHost, authHeader);
+    if (r.ok) {
+      updateParams({ imageName: r.data.name });
+      return r.data.name;
+    }
+    throw new Error(r.error.message);
+  };
+
+  return (
+    <div className="space-y-5">
+      <SourcePicker kind="video" onSelect={(name) => updateParams({ imageName: name })} />
+      <ImageUpload
+        label="或上傳來源影片"
+        value={params.imageName ? 'set' : null}
+        onChange={(data) => {
+          if (!data) updateParams({ imageName: undefined });
+        }}
+        onUpload={handleUpload}
+      />
+      <UpscaleControls />
+      <Separator />
+      <GenerationControls
+        onGenerate={() => submit()}
+        onInterrupt={onInterrupt}
+        label="放大影片"
+        disabled={!params.imageName}
+      />
+    </div>
+  );
+}

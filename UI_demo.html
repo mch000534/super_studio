@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Super Studio — UI Demo</title>
+<style>
+  :root {
+    --bg: #f8fafc;
+    --fg: #1e293b;
+    --muted-bg: #f1f5f9;
+    --muted-fg: #64748b;
+    --border: #e2e8f0;
+    --primary: #1e40af;
+    --primary-hover: #1f3a8f;
+    --primary-fg: #ffffff;
+    --accent: #e0e7ff;
+    --success: #16a34a;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --card: #ffffff;
+    --shadow: 0 1px 2px rgba(30,41,59,.06), 0 1px 3px rgba(30,41,59,.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 14px;
+    min-height: 100vh;
+  }
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* ---------- Header ---------- */
+  .header {
+    height: 56px; background: var(--card);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 16px; gap: 24px;
+  }
+  .logo { font-weight: 700; font-size: 17px; display: flex; align-items: center; gap: 10px; color: var(--fg); }
+  .logo-mark {
+    width: 26px; height: 26px; border-radius: 6px;
+    background: var(--fg); color: var(--card);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logo-mark svg { width: 16px; height: 16px; }
+  .header-nav { display: flex; gap: 4px; }
+  .nav-link {
+    padding: 6px 12px; border-radius: 6px; cursor: pointer;
+    color: var(--muted-fg); text-decoration: none; font-weight: 500; font-size: 13px;
+  }
+  .nav-link:hover { color: var(--fg); background: var(--muted-bg); }
+  .nav-link.active { background: var(--accent); color: var(--primary); }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .status { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted-fg); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot.green { background: var(--success); }
+  .status .label { color: var(--success); font-weight: 500; }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--card);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    color: var(--muted-fg);
+  }
+  .icon-btn:hover { background: var(--muted-bg); color: var(--fg); }
+  .icon-btn svg { width: 17px; height: 17px; }
+
+  /* ---------- Body ---------- */
+  .body { display: flex; flex: 1; overflow: hidden; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 212px; border-right: 1px solid var(--border);
+    background: var(--card); display: flex; flex-direction: column; padding: 12px;
+  }
+  .mode-group { margin-bottom: 16px; }
+  .mode-title {
+    font-size: 11px; font-weight: 600; color: var(--muted-fg);
+    text-transform: uppercase; letter-spacing: .05em; padding: 6px 10px 6px;
+  }
+  .mode-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 7px; cursor: pointer;
+    color: var(--fg); text-decoration: none; font-weight: 500; font-size: 13px;
+  }
+  .mode-item:hover { background: var(--muted-bg); }
+  .mode-item.active { background: var(--accent); color: var(--primary); }
+  .mode-item .m-ico { display: flex; color: var(--muted-fg); }
+  .mode-item.active .m-ico { color: var(--primary); }
+  .mode-item .m-ico svg { width: 16px; height: 16px; }
+  .mode-item .badge { margin-left: auto; font-size: 10px; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+  .sidebar-footer {
+    margin-top: auto; padding: 12px 10px; border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--muted-fg); display: flex; flex-direction: column; gap: 6px;
+  }
+  .queue-row { display: flex; justify-content: space-between; }
+
+  /* Gallery */
+  .gallery { flex: 1; overflow-y: auto; padding: 20px; }
+  .gallery-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .gallery-title { font-size: 18px; font-weight: 700; }
+  .gallery-sub { font-size: 12px; color: var(--muted-fg); margin-top: 2px; }
+  .gallery-toolbar { display: flex; gap: 8px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; box-shadow: var(--shadow);
+    transition: transform .15s, box-shadow .15s; position: relative;
+  }
+  .card:hover { box-shadow: 0 6px 16px rgba(30,41,59,.12); }
+  .card-media {
+    aspect-ratio: 1; background: #eef2f7; position: relative;
+    display: flex; align-items: center; justify-content: center; color: var(--muted-fg);
+    font-size: 12px;
+  }
+  .card-media.video { background: linear-gradient(135deg,#e2e8f0,#cbd5e1); }
+  .card-actions { position: absolute; top: 8px; right: 8px; display: none; gap: 6px; }
+  .card:hover .card-actions { display: flex; }
+  .mini-btn {
+    width: 30px; height: 30px; border-radius: 7px; border: none;
+    background: rgba(15,23,42,.65); color: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .mini-btn:hover { background: rgba(15,23,42,.85); }
+  .mini-btn svg { width: 15px; height: 15px; }
+  .play-overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  }
+  .play-overlay .play-circle {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: rgba(15,23,42,.55); display: flex; align-items: center; justify-content: center;
+  }
+  .play-overlay .play-circle svg { width: 20px; height: 20px; fill: #fff; }
+  .card-body { padding: 10px 12px; }
+  .card-prompt { font-size: 12px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
+  .card-meta { font-size: 11px; color: var(--muted-fg); display: flex; justify-content: space-between; }
+
+  .gen-card { border-color: var(--primary); }
+  .gen-preview {
+    aspect-ratio: 16/9; background: repeating-conic-gradient(#e8edf3 0% 25%, #f6f8fb 0% 50%) 50%/22px 22px;
+    display: flex; align-items: center; justify-content: center; color: var(--muted-fg); font-size: 12px;
+  }
+  .progress { height: 7px; background: var(--muted-bg); border-radius: 999px; overflow: hidden; }
+  .progress-bar { height: 100%; background: var(--primary); border-radius: 999px; width: 60%; transition: width .3s; }
+  .stop-btn {
+    background: var(--danger); color: #fff; border: none; border-radius: 7px;
+    padding: 5px 12px; font-size: 12px; cursor: pointer;
+  }
+  .stop-btn:hover { filter: brightness(.92); }
+
+  /* Right panel */
+  .panel {
+    width: 316px; border-left: 1px solid var(--border);
+    background: var(--card); overflow-y: auto; padding: 16px;
+    display: flex; flex-direction: column; gap: 15px;
+  }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field-label { font-size: 12px; font-weight: 600; color: var(--muted-fg); }
+  .input, .textarea, .select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 7px; background: var(--muted-bg); font-size: 14px;
+    color: var(--fg); font-family: inherit;
+  }
+  .input:focus, .textarea:focus, .select:focus { outline: 2px solid var(--primary); outline-offset: -1px; background: #fff; border-color: transparent; }
+  .input:hover, .select:hover, .textarea:hover { border-color: #cbd5e1; }
+  .textarea { resize: vertical; min-height: 72px; }
+  .row { display: flex; gap: 8px; } .row > * { flex: 1; }
+
+  .segmented { display: flex; gap: 6px; }
+  .seg-btn {
+    flex: 1; padding: 6px 0; border: 1px solid var(--border); border-radius: 7px;
+    text-align: center; cursor: pointer; font-size: 12px; background: var(--muted-bg); color: var(--muted-fg);
+  }
+  .seg-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+  .seed-row { display: flex; gap: 8px; } .seed-row .input { flex: 1; }
+  .dice {
+    width: 38px; border-radius: 7px; border: 1px solid var(--border); background: var(--muted-bg);
+    cursor: pointer; color: var(--muted-fg); display: flex; align-items: center; justify-content: center;
+  }
+  .dice:hover { color: var(--primary); border-color: var(--primary); }
+  .dice svg { width: 16px; height: 16px; }
+
+  .btn-primary {
+    width: 100%; padding: 11px; border: none; border-radius: 9px;
+    background: var(--primary); color: var(--primary-fg); font-size: 14px;
+    font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .divider { height: 1px; background: var(--border); }
+  .panel-title { font-size: 15px; font-weight: 700; }
+  .mode-breadcrumb { font-size: 12px; color: var(--muted-fg); }
+  details summary { cursor: pointer; }
+
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--fg); color: var(--card); padding: 12px 20px;
+    border-radius: 9px; font-size: 14px; box-shadow: 0 10px 30px rgba(15,23,42,.3);
+    z-index: 100; display: flex; align-items: center; gap: 8px; opacity: 0; transition: opacity .3s;
+  }
+  .toast.show { opacity: 1; }
+  .toast .t-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+
+  @media (max-width: 1024px) { .panel { width: 280px; } }
+  @media (max-width: 768px) { .sidebar, .panel { display: none; } .header-nav { display: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ Header ============ -->
+  <header class="header">
+    <div class="logo">
+      <span class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 9h.01M15 9h.01M9 15h6"/></svg>
+      </span>
+      Super Studio
+    </div>
+    <nav class="header-nav">
+      <a class="nav-link active">工作台</a>
+      <a class="nav-link">歷史記錄</a>
+      <a class="nav-link">設定</a>
+    </nav>
+    <div class="header-right">
+      <span class="status"><span class="dot green"></span><span class="label">已連接</span></span>
+      <button class="icon-btn" title="主題">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4m11.4-11.4 1.4-1.4"/></svg>
+      </button>
+      <button class="icon-btn" title="設定">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="body">
+
+    <!-- ============ Sidebar ============ -->
+    <aside class="sidebar">
+      <div class="mode-group">
+        <div class="mode-title">生成</div>
+        <a class="mode-item active"><span class="m-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></span>文生圖</a>
+        <a class="mode-item"><span class="m-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22a10 10 0 1 1 10-10"/><path d="M22 17v5h-5"/><path d="m14 18 3 3 4-4"/></svg></span>圖生圖</a>
+        <a class="mode-item"><span class="m-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M10 8.5 16 12l-6 3.5z"/></svg></span>文生影片</a>
+        <a class="mode-item"><span class="m-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 8v8l-6-4z"/><rect x="2" y="6" width="15" height="12" rx="2"/></svg></span>圖生影片</a>
+      </div>
+      <div class="mode-group">
+        <div class="mode-title">放大</div>
+        <a class="mode-item"><span class="m-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6M11 8v6"/></svg></span>圖片放大</a>
+        <a class="mode-item"><span class="m-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h8"/><path d="M11 8 7 4m4 4-4 4M3 16h8"/><path d="M15 5h2a2 2 0 0 1 2 2v12"/></svg></span>影片放大</a>
+      </div>
+      <div class="mode-group">
+        <div class="mode-title">進階</div>
+        <a class="mode-item"><span class="m-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></span>自定義工作流<span class="badge">Beta</span></a>
+      </div>
+      <div class="sidebar-footer">
+        <div class="queue-row"><span>生成佇列</span><span>0</span></div>
+        <div class="queue-row"><span>目前任務</span><span>—</span></div>
+      </div>
+    </aside>
+
+    <!-- ============ Gallery ============ -->
+    <main class="gallery">
+      <div class="gallery-header">
+        <div>
+          <div class="gallery-title">結果畫廊</div>
+          <div class="gallery-sub">文生圖 · 共 4 個結果</div>
+        </div>
+        <div class="gallery-toolbar">
+          <button class="icon-btn" title="下載全部">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          </button>
+          <button class="icon-btn" title="篩選">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <!-- generating card -->
+        <div class="card gen-card">
+          <div class="gen-preview">即時預覽</div>
+          <div class="card-body">
+            <div class="card-prompt">a beautiful sunset over the ocean... (產生中)</div>
+            <div style="margin:8px 0 6px; display:flex; justify-content:space-between; font-size:11px; color:var(--muted-fg);">
+              <span>取樣 12/20 步</span><span>KSampler</span>
+            </div>
+            <div class="progress"><div class="progress-bar"></div></div>
+            <div style="margin-top:8px; display:flex; align-items:center; gap:8px;">
+              <button class="stop-btn">中斷</button>
+              <span style="font-size:11px; color:var(--muted-fg);">剩餘佇列: 1</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- image card 1 -->
+        <div class="card">
+          <div class="card-media" style="background:linear-gradient(135deg,#7961d8,#a97bcf);"></div>
+          <div class="card-actions">
+            <button class="mini-btn" title="下載"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>
+            <button class="mini-btn" title="放大"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6M11 8v6"/></svg></button>
+            <button class="mini-btn" title="詳情"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+          </div>
+          <div class="card-body"><div class="card-prompt">golden sunset over ocean waves</div><div class="card-meta"><span>1024 × 1024</span><span>2 分鐘前</span></div></div>
+        </div>
+
+        <!-- image card 2 -->
+        <div class="card">
+          <div class="card-media" style="background:linear-gradient(135deg,#5686a8,#3d6f9c);"></div>
+          <div class="card-actions">
+            <button class="mini-btn" title="下載"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>
+            <button class="mini-btn" title="放大"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6M11 8v6"/></svg></button>
+            <button class="mini-btn" title="詳情"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+          </div>
+          <div class="card-body"><div class="card-prompt">misty mountain lake landscape</div><div class="card-meta"><span>512 × 512</span><span>8 分鐘前</span></div></div>
+        </div>
+
+        <!-- video card -->
+        <div class="card">
+          <div class="card-media video">
+            <span class="play-overlay"><span class="play-circle"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span></span>
+          </div>
+          <div class="card-actions">
+            <button class="mini-btn" title="下載"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>
+            <button class="mini-btn" title="放大"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6M11 8v6"/></svg></button>
+            <button class="mini-btn" title="詳情"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+          </div>
+          <div class="card-body"><div class="card-prompt">a cat walking on the beach</div><div class="card-meta"><span>1280 × 720 · 5s</span><span>15 分鐘前</span></div></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ============ Right Panel (Text to Image) ============ -->
+    <aside class="panel">
+      <div>
+        <div class="panel-title">文生圖</div>
+        <div class="mode-breadcrumb">輸入提示詞開始創作</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">提示詞</label>
+        <textarea class="textarea" placeholder="描述你想要的影像...">a beautiful sunset over the ocean</textarea>
+      </div>
+
+      <details class="field">
+        <summary class="field-label">負向提示詞</summary>
+        <textarea class="textarea" style="margin-top:6px;" placeholder="低畫質、變形..."></textarea>
+      </details>
+
+      <div class="field">
+        <label class="field-label">模型</label>
+        <select class="select"><option>Z-Image-Turbo</option><option>其他模型...</option></select>
+      </div>
+
+      <div class="field">
+        <label class="field-label">尺寸</label>
+        <div class="segmented">
+          <div class="seg-btn active">1:1</div>
+          <div class="seg-btn">3:4</div>
+          <div class="seg-btn">16:9</div>
+          <div class="seg-btn">自訂</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label class="field-label">寬度</label><input class="input" value="1024"></div>
+        <div class="field"><label class="field-label">高度</label><input class="input" value="1024"></div>
+      </div>
+
+      <div class="row">
+        <div class="field"><label class="field-label">Steps</label><input class="input" value="8"></div>
+        <div class="field"><label class="field-label">CFG</label><input class="input" value="1"></div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Seed</label>
+        <div class="seed-row">
+          <input class="input" value="8566257">
+          <button class="dice" title="隨機">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="15.5" r="1.2" fill="currentColor" stroke="none"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">批次數</label>
+        <input class="input" type="number" value="1" min="1" max="8" style="width:80px;">
+      </div>
+
+      <div class="divider"></div>
+      <button class="btn-primary">生成圖片</button>
+    </aside>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span class="t-dot"></span> 圖片已生成</div>
+
+<script>
+  document.querySelectorAll('.mode-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.mode-item').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+    });
+  });
+  document.querySelectorAll('.nav-link').forEach(link => {
+    link.addEventListener('click', () => {
+      document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+      link.classList.add('active');
+    });
+  });
+  document.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.parentElement.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+  const toast = document.getElementById('toast');
+  document.querySelector('.btn-primary').addEventListener('click', () => {
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2200);
+  });
+</script>
+</body>
+</html>
