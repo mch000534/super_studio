@@ -117,10 +117,12 @@ export const comfyuiClient = {
     host: string,
     authHeader?: string
   ): Promise<ApiResult<UploadResponse>> {
+    // ComfyUI has no /upload/video endpoint; its /upload/image accepts any
+    // file (stored into the input folder) but only reads the "image" form field.
     const form = new FormData();
-    form.append('video', file);
+    form.append('image', file);
     form.append('overwrite', 'true');
-    return request<UploadResponse>('upload-video', {
+    return request<UploadResponse>('upload/image', {
       method: 'POST',
       body: form,
       host,

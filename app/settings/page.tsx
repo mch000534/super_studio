@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ComfyUIConfig } from '@/components/settings/comfyui-config';
 import { ThemeSettings } from '@/components/settings/theme-settings';
+import { LlmConfig } from '@/components/settings/llm-config';
 
 export default function SettingsPage() {
   return (
@@ -25,6 +26,18 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <ComfyUIConfig />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>提示詞優化（LLM）</CardTitle>
+          <CardDescription>
+            使用本機 LLM 把提示詞擴充成英文正向與負向提示詞；圖生圖時會先反推圖片內容合併優化
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LlmConfig />
         </CardContent>
       </Card>
 

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
-import { Sun, Moon, Monitor, Settings, History, Sparkles, Loader2 } from 'lucide-react';
+import { Sun, Moon, Monitor, Settings, History, Sparkles, Loader2, ListTodo } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -12,11 +12,15 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import { useComfyUI } from '@/hooks/use-comfyui';
+import { useQueueStore, queuePendingCount } from '@/stores/queue-store';
 
 export function Header() {
   const { isConnected, wsStatus, testing } = useComfyUI();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const queueTasks = useQueueStore((s) => s.tasks);
+
+  const pendingCount = queuePendingCount(queueTasks);
 
   useEffect(() => setMounted(true), []);
 
@@ -69,6 +73,17 @@ export function Header() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <Button variant="ghost" size="icon" asChild aria-label="佇列" className="relative">
+          <Link href="/queue">
+            <ListTodo className="h-4 w-4" />
+            {pendingCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+                {pendingCount}
+              </span>
+            )}
+          </Link>
+        </Button>
 
         <Button variant="ghost" size="icon" asChild aria-label="歷史">
           <Link href="/history">

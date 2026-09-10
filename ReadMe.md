@@ -6,6 +6,8 @@
 
 - **七種生成模式**：文生圖、圖生圖、文生影片、圖生影片、圖片放大、影片放大、自定義工作流
 - **即時進度回饋**：透過 WebSocket 顯示節點執行進度與即時預覽圖
+- **生成佇列**：批次排隊、重新排序、中斷與載入前一任務參數（`/queue` 頁）
+- **LLM 提示詞優化**：接 OpenAI 相容 API（Ollama 等），將口語描述擴充為高品質英文提示詞、或反推參考圖內容（`反推圖片並優化`）
 - **可設定 ComfyUI 地址**：在設定頁配置與測試連線，支援跨主機代理
 - **畫廊與歷史**：生成結果集中管理，可下載、檢視、再次放大
 - **深色/淺色主題**與響應式版面（桌面三欄、平板抽屜、手機 Sheet）
@@ -16,16 +18,19 @@
 |------|------|
 | 前端 | React 18 + Next.js 16 (App Router)、Zustand 狀態管理、shadcn/ui 風格元件 |
 | 代理層 | `app/api/comfyui/[...path]/route.ts` 將瀏覽器請求轉發至 ComfyUI（避免 CORS） |
+| LLM 代理 | `app/api/llm/[...path]/route.ts` 轉發 OpenAI 相容 API（提示詞優化／圖反推） |
 | WebSocket | 瀏覽器經 `ws://<host>/ws?clientId=...` 直連，`websocket-manager` 負責重連與事件分發 |
 | 工作流 | `lib/workflow-templates.ts` 依模式生成 API-format 工作流，已對照本機 ComfyUI v0.34 節點簽名驗證 |
+| 佇列 | `stores/queue-store.ts` + `app/queue/` 管理多任務排隊、中斷與重載 |
 
 主要資料夾：
 
 ```
-app/            路由頁面（首頁 / settings / history）與 API 代理
-components/     UI 元件（workspace / gallery / workflow / settings / ui）
-lib/            client、websocket、工作流模板與解析、儲存
-stores/         Zustand store（settings / generation / history / gallery）
+app/            路由頁面（首頁 / settings / history / queue）與 API 代理
+components/     UI 元件（workspace / gallery / workflow / settings / layout）
+hooks/          生成、WebSocket、LLM、ComfyUI 連線 hooks
+lib/            client、websocket、工作流模板與解析、LLM、拖放、儲存
+stores/         Zustand store（settings / generation / queue / history / gallery）
 types/          ComfyUI 與工作流程型別
 docs/           需求、規格、UI/UX 與開發任務清單
 ```
@@ -61,9 +66,18 @@ npm run dev          # 開發模式（預設 http://localhost:3000）
 
 > 代理設計：前端呼叫同源的 `/api/comfyui/*`，由 Next.js 依 `X-ComfyUI-Host`/`X-ComfyUI-Auth` header 轉發，因此瀏覽器不需直接暴露遠端地址。
 
+### LLM 提示詞優化設定（選用）
+
+提示詞面板的「優化提示詞／反推圖片並優化」按鈕需要一支 OpenAI 相容 API（內建支援 Ollama `:11434/v1`），於設定頁「LLM」區塊填寫：
+- Base URL（預設 `http://<本機 IP>:11434/v1`）
+- 模型名稱（預設 `qwen3-vl:8b`，需支援多模態才能「反推圖片」）
+- API Key（若需要）
+
+> LLM 連線同樣經同源代理 `/api/llm/*`（`X-LLM-BaseURL`/`X-LLM-Model`/`X-LLM-ApiKey` header），不直接外連。
+
 ## 使用方式
 
-左欄切換模式，右欄填參數，點「生成」開始；進度即時顯示並可中斷。完成後結果自動出現在畫廊，可點開檢視、下載、或「放大」再次處理。
+左欄切換模式，右欄填參數，點「生成」開始；進度即時顯示並可中斷。完成後結果自動出現在畫廊，可點開檢視、下載、或「放大」再次處理。多次生成會排入「生成佇列」（Header 有數量角標），可在 `/queue` 調整順序、載入參數或清除。
 
 | 模式 | 需要輸入 |
 |------|----------|
@@ -88,8 +102,10 @@ npm start           # 執行 production 伺服器
 
 | 檔案/位置 | 用途 |
 |-----------|------|
-| `app/settings/` | ComfyUI 地址、主題、系統資訊（設定會存於瀏覽器 localStorage） |
+| `app/settings/` | ComfyUI 地址、LLM 設定、主題、系統資訊（設定會存於瀏覽器 localStorage） |
+| `app/queue/` | 生成佇列管理（順序、中斷、載入參數） |
 | `lib/workflow-templates.ts` | 各模式工作流構建（如需對照新環境節點請依該環境 `object_info` 修正） |
+| `lib/llm-client.ts` / `lib/prompt-optimizer.ts` | LLM 提示詞優化與圖片反推 |
 | `docs/todolist.md` | 開發任務清單（含各項目完成判定） |
 
 ## 已知注意事項

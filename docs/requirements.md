@@ -12,7 +12,9 @@
 - 將 ComfyUI 的強大能力包裝為簡單易用的 UI
 - 支持多種生成模式：文生圖、圖生圖、文生視頻、圖生視頻
 - 提供即時生成進度反饋
+- 支持任務排隊與批次管理
 - 用戶可自定義 ComfyUI 連接地址
+- 搭配 LLM（OpenAI 相容 API）優化提示詞／反推圖片
 - 支持上傳和使用自定義工作流
 
 ### 已知 ComfyUI 環境
@@ -337,11 +339,11 @@ And 原始影片應保持不變
 
 | 層級 | 技術 | 版本 |
 |------|------|------|
-| 框架 | Next.js (App Router) | 14+ |
+| 框架 | Next.js (App Router) | 16+（本機 16.3.4） |
 | 語言 | TypeScript | 5+ |
-| 樣式 | Tailwind CSS | 3+ |
+| 樣式 | Tailwind CSS | 3+（本機 3.4） |
 | UI 組件 | shadcn/ui | latest |
-| 狀態管理 | Zustand | 4+ |
+| 狀態管理 | Zustand | 4+（本機 4.5） |
 | 圖標 | lucide-react | latest |
 | JSON 編輯 | @monaco-editor/react (可選) | latest |
 
@@ -349,14 +351,17 @@ And 原始影片應保持不變
 
 - **前端純 CSR 模式**：所有 ComfyUI 通訊通過 Next.js API Routes 代理（避免 CORS 問題）
 - **WebSocket 連接**：直接從瀏覽器連接 ComfyUI WebSocket（ws://host/ws?clientId=xxx）
+- **LLM 代理**：OpenAI 相容 API（Ollama 等）經 `/api/llm/*` 同源代理轉發，用於提示詞優化與圖片反推
 - **類型安全**：所有 ComfyUI API 響應和工作流 JSON 使用 TypeScript 類型定義
 - **錯誤處理**：網絡錯誤、ComfyUI 錯誤、工作流驗證錯誤均需友好提示
+- **任務佇列**：多次生成以佇列管理（`stores/queue-store.ts` + `app/queue/`），可排序、中斷、載入參數
 
 ### 4.3 ComfyUI API 通訊
 
 ```
 瀏覽器 --> Next.js API Route (/api/comfyui/*) --> ComfyUI 伺服器
 瀏覽器 <-- WebSocket (ws://host/ws?clientId=xxx) <-- ComfyUI 伺服器
+瀏覽器 --> Next.js API Route (/api/llm/*) --> OpenAI 相容 API (Ollama)
 ```
 
 **代理端點：**
@@ -368,6 +373,7 @@ And 原始影片應保持不變
 - `GET /api/comfyui/object_info` → `GET /object_info`
 - `GET /api/comfyui/models/[folder]` → `GET /models/{folder}`
 - `GET /api/comfyui/system_stats` → `GET /system_stats`
+- `/api/llm/*` → 依 `X-LLM-BaseURL`/`X-LLM-Model`/`X-LLM-ApiKey` header 轉發至 OpenAI 相容 API
 
 ### 4.4 類型定義
 
@@ -568,7 +574,7 @@ super_studio/
 ├── requirements.md                    # 本文件
 ├── package.json
 ├── tsconfig.json
-├── next.config.ts
+├── next.config.mjs
 ├── tailwind.config.ts
 ├── postcss.config.js
 ├── components.json                    # shadcn/ui 配置
@@ -578,14 +584,18 @@ super_studio/
 │   ├── page.tsx                       # 首頁/工作台
 │   ├── globals.css                    # 全局樣式 + CSS 變量
 │   ├── settings/
-│   │   └── page.tsx                   # 設定頁
+│   │   └── page.tsx                   # 設定頁（ComfyUI + LLM + 主題）
 │   ├── history/
 │   │   └── page.tsx                   # 歷史記錄頁
+│   ├── queue/
+│   │   └── page.tsx                   # 生成佇列頁
 │   └── api/
-│       └── comfyui/
-│           ├── route.ts               # 通用代理（forward all requests）
-│           ├── upload/route.ts        # 圖片上傳代理
-│           └── view/route.ts          # 文件查看代理
+│       ├── comfyui/
+│       │   ├── [...path]/route.ts     # 通用代理（forward all requests）
+│       │   ├── upload/route.ts        # 圖片上傳代理
+│       │   └── view/route.ts          # 文件查看代理
+│       └── llm/
+│           └── [...path]/route.ts     # OpenAI 相容 API 代理
 │
 ├── components/
 │   ├── ui/                            # shadcn/ui 組件（Button, Input, Card, etc.）
@@ -594,45 +604,56 @@ super_studio/
 │   │   └── sidebar.tsx                # 左側模式選擇
 │   ├── workspace/
 │   │   ├── workspace.tsx              # 工作台主容器
-│   │   ├── prompt-panel.tsx           # 提示詞輸入
+│   │   ├── right-panel.tsx            # 右欄參數面板容器
+│   │   ├── prompt-panel.tsx           # 提示詞輸入（含 LLM 優化）
 │   │   ├── parameter-controls.tsx     # 參數控制（steps, cfg, size, seed）
 │   │   ├── model-selector.tsx         # 模型選擇下拉框
 │   │   ├── image-upload.tsx           # 圖片上傳（圖生圖/圖生視頻用）
 │   │   ├── generation-controls.tsx    # 生成/中斷按鈕 + 進度條
 │   │   ├── video-controls.tsx         # 視頻特有參數（duration, fps, turbo）
 │   │   ├── upscale-controls.tsx       # 放大參數（scale, upscale_model）
-│   │   └── source-picker.tsx          # 來源媒體選擇器（放大用）
+│   │   └── upscale-dialog.tsx         # 放大確認彈窗
 │   ├── gallery/
 │   │   ├── output-gallery.tsx         # 輸出結果網格
 │   │   ├── media-card.tsx             # 單個媒體卡片（含放大操作）
+│   │   ├── generating-card.tsx        # 生成中進度卡
 │   │   ├── image-viewer.tsx           # 圖片燈箱
 │   │   └── video-player.tsx           # 視頻播放器
 │   ├── workflow/
+│   │   ├── custom-workflow-panel.tsx  # 自定義工作流面板
 │   │   ├── workflow-editor.tsx        # 自定義工作流 JSON 編輯器
 │   │   ├── workflow-params.tsx        # 動態參數面板
 │   │   └── workflow-upload.tsx        # 工作流上傳
 │   └── settings/
 │       ├── comfyui-config.tsx         # ComfyUI 連接設定表單
+│       ├── llm-config.tsx             # LLM 服務設定表單
 │       └── system-info.tsx            # 系統信息展示
+│
+├── hooks/
+│   ├── use-comfyui.ts                 # ComfyUI 連接狀態 hook
+│   ├── use-websocket.ts               # WebSocket 事件 hook
+│   ├── use-generation.ts              # 生成任務管理 hook
+│   ├── use-llm.ts                     # LLM 提示詞優化/反推 hook
+│   └── use-toast.ts                   # Toast hook
 │
 ├── lib/
 │   ├── comfyui-client.ts              # ComfyUI API 客戶端
 │   ├── websocket-manager.ts           # WebSocket 連接管理
 │   ├── workflow-templates.ts          # 預設工作流模板生成
 │   ├── workflow-parser.ts             # 工作流解析/參數提取
+│   ├── modes.ts                       # 七種生成模式註冊
+│   ├── llm-client.ts                  # OpenAI 相容 API 客戶端
+│   ├── prompt-optimizer.ts            # 提示詞優化/圖片反推 prompt 構建
+│   ├── drag-drop.ts                   # 拖放 helper
 │   ├── storage.ts                     # localStorage 封裝
 │   └── utils.ts                       # 通用工具函數
 │
-├── hooks/
-│   ├── use-comfyui.ts                 # ComfyUI 連接狀態 hook
-│   ├── use-websocket.ts               # WebSocket 事件 hook
-│   ├── use-generation.ts              # 生成任務管理 hook
-│   └── use-gallery.ts                 # 畫廊管理 hook
-│
 ├── stores/
-│   ├── settings-store.ts              # 設定 store（ComfyUI 地址等）
+│   ├── settings-store.ts              # 設定 store（ComfyUI/LLM 地址、主題、模式）
 │   ├── generation-store.ts            # 當前生成狀態 store
-│   └── history-store.ts               # 歷史記錄 store
+│   ├── queue-store.ts                 # 生成佇列 store
+│   ├── history-store.ts               # 歷史記錄 store
+│   └── gallery-store.ts               # 畫廊資料 store
 │
 ├── types/
 │   ├── comfyui.ts                     # ComfyUI API 類型定義
@@ -676,3 +697,9 @@ super_studio/
 - 歷史記錄管理
 - 主題切換
 - 系統信息展示
+
+### Phase 6: 佇列與 LLM 整合（已實作）
+- 生成佇列（`/queue` 頁）：排隊、重新排序、中斷、載入參數
+- LLM 提示詞優化：OpenAI 相容 API（Ollama）→ `/api/llm/*` 代理
+- 圖片反推：以多模態 LLM 描述參考圖並回填提示詞
+- 設定頁新增 LLM 區塊（Base URL / Model / API Key）

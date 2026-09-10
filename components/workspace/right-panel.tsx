@@ -8,7 +8,6 @@ import { GenerationControls } from '@/components/workspace/generation-controls';
 import { VideoControls } from '@/components/workspace/video-controls';
 import { ImageUpload } from '@/components/workspace/image-upload';
 import { ModelSelector } from '@/components/workspace/model-selector';
-import { SourcePicker } from '@/components/workspace/source-picker';
 import { UpscaleControls } from '@/components/workspace/upscale-controls';
 import { CustomWorkflowPanel } from '@/components/workflow/custom-workflow-panel';
 import { Slider } from '@/components/ui/slider';
@@ -78,7 +77,11 @@ export function RightPanel() {
           {getModeMeta(currentMode).description}
         </span>
       </div>
-      <PanelContent mode={currentMode} onGenerate={onGenerate} onInterrupt={interrupt} />
+      <PanelContent
+        mode={currentMode}
+        onGenerate={onGenerate}
+        onInterrupt={interrupt}
+      />
     </div>
   );
 }
@@ -144,6 +147,7 @@ function Img2ImgControls({ onInterrupt }: { onInterrupt: () => void }) {
   };
 
   const handleSourceSelect = async (item: MediaItem) => {
+    if (item.kind !== 'image') return;
     const r = await ensureInputRef(item, comfyuiHost, authHeader);
     if (r.ok) {
       updateParams({ imageName: r.name });
@@ -157,15 +161,18 @@ function Img2ImgControls({ onInterrupt }: { onInterrupt: () => void }) {
 
   return (
     <div className="space-y-5">
-      <SourcePicker kind="image" onSelect={handleSourceSelect} />
-      <ImageUpload
-        label="參考影像"
-        value={params.imageName ?? null}
-        onChange={(data) => {
-          if (!data) updateParams({ imageName: undefined });
-        }}
-        onUpload={handleUpload}
-      />
+      <div className="space-y-1.5">
+        <span className="text-xs text-muted-foreground">可從上方畫廊拖曳圖片至此作為參考</span>
+        <ImageUpload
+          label="參考影像"
+          value={params.imageName ?? null}
+          onChange={(data) => {
+            if (!data) updateParams({ imageName: undefined });
+          }}
+          onUpload={handleUpload}
+          onGalleryDrop={handleSourceSelect}
+        />
+      </div>
       <PromptPanel />
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -202,6 +209,19 @@ function Img2VidControls({ onInterrupt }: { onInterrupt: () => void }) {
     throw new Error(r.error.message);
   };
 
+  const handleGalleryDrop = async (item: MediaItem, key: 'firstFrameName' | 'lastFrameName') => {
+    if (item.kind !== 'image') return;
+    const r = await ensureInputRef(item, comfyuiHost, authHeader);
+    if (r.ok) {
+      updateParams({ [key]: r.name });
+      if (item.type !== 'input' || item.subfolder) {
+        toast({ title: '已轉為參考影像', description: '來源圖片已上傳至 ComfyUI input' });
+      }
+      return;
+    }
+    toast({ variant: 'destructive', title: '選取失敗', description: r.message });
+  };
+
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3">
@@ -212,6 +232,7 @@ function Img2VidControls({ onInterrupt }: { onInterrupt: () => void }) {
             if (!data) updateParams({ firstFrameName: undefined });
           }}
           onUpload={(f) => upload(f, 'firstFrameName')}
+          onGalleryDrop={(item) => handleGalleryDrop(item, 'firstFrameName')}
         />
         <ImageUpload
           label="尾幀（可選）"
@@ -220,6 +241,7 @@ function Img2VidControls({ onInterrupt }: { onInterrupt: () => void }) {
             if (!data) updateParams({ lastFrameName: undefined });
           }}
           onUpload={(f) => upload(f, 'lastFrameName')}
+          onGalleryDrop={(item) => handleGalleryDrop(item, 'lastFrameName')}
         />
       </div>
       <PromptPanel placeholder="描述動態效果…" />
@@ -246,6 +268,7 @@ function ImgUpscaleControls({ onInterrupt }: { onInterrupt: () => void }) {
   };
 
   const handleSourceSelect = async (item: MediaItem) => {
+    if (item.kind !== 'image') return;
     const r = await ensureInputRef(item, comfyuiHost, authHeader);
     if (r.ok) {
       updateParams({ imageName: r.name });
@@ -259,15 +282,18 @@ function ImgUpscaleControls({ onInterrupt }: { onInterrupt: () => void }) {
 
   return (
     <div className="space-y-5">
-      <SourcePicker kind="image" onSelect={handleSourceSelect} />
-      <ImageUpload
-        label="或上傳來源圖片"
-        value={params.imageName ?? null}
-        onChange={(data) => {
-          if (!data) updateParams({ imageName: undefined });
-        }}
-        onUpload={handleUpload}
-      />
+      <div className="space-y-1.5">
+        <span className="text-xs text-muted-foreground">可從上方畫廊拖曳圖片至此作為來源</span>
+        <ImageUpload
+          label="或上傳來源圖片"
+          value={params.imageName ?? null}
+          onChange={(data) => {
+            if (!data) updateParams({ imageName: undefined });
+          }}
+          onUpload={handleUpload}
+          onGalleryDrop={handleSourceSelect}
+        />
+      </div>
       <UpscaleControls />
       <Separator />
       <GenerationControls
@@ -297,15 +323,20 @@ function VidUpscaleControls({ onInterrupt }: { onInterrupt: () => void }) {
 
   return (
     <div className="space-y-5">
-      <SourcePicker kind="video" onSelect={(item) => updateParams({ imageName: item.filename })} />
-      <ImageUpload
-        label="或上傳來源影片"
-        value={params.imageName ? 'set' : null}
-        onChange={(data) => {
-          if (!data) updateParams({ imageName: undefined });
-        }}
-        onUpload={handleUpload}
-      />
+      <div className="space-y-1.5">
+        <span className="text-xs text-muted-foreground">可從上方畫廊拖曳影片至此作為來源</span>
+        <ImageUpload
+          label="或上傳來源影片"
+          value={params.imageName ? 'set' : null}
+          onChange={(data) => {
+            if (!data) updateParams({ imageName: undefined });
+          }}
+          onUpload={handleUpload}
+          onGalleryDrop={(item) => {
+            if (item.kind === 'video') updateParams({ imageName: item.filename });
+          }}
+        />
+      </div>
       <UpscaleControls />
       <Separator />
       <GenerationControls

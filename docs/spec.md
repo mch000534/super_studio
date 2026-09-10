@@ -79,22 +79,28 @@ sequenceDiagram
 
 ## 2. 前端狀態管理設計
 
-### 2.1 三個 Store 的職責劃分
+### 2.1 五個 Store 的職責劃分
 
 | Store | 職責 | 生命週期 |
 |-------|------|----------|
-| `settings-store` | ComfyUI 地址、主題、當前模式 | localStorage 持久化 |
+| `settings-store` | ComfyUI 地址、LLM 設定、主題、當前模式 | localStorage 持久化 |
 | `generation-store` | 目前正在進行的生成狀態、參數、進度 | 記憶體（session） |
+| `queue-store` | 生成佇列（多任務排隊、狀態、排序、中斷） | 記憶體（session） |
 | `history-store` | 歷史記錄、可重複載入的參數 | localStorage 持久化 |
+| `gallery-store` | 畫廊資料與操作 | localStorage 持久化 |
 
 ### 2.2 狀態流向
 
 ```
-settings-store ──▶ 提供 comfyuiHost 給 client
+settings-store ──▶ 提供 comfyuiHost / llmXxx 給 client
                           │
 generation-store ◀── 訂閱 WebSocket 事件更新進度
                           │
+queue-store      ◀── 多次生成入列、依序消費、可中斷
+                          │
 history-store   ◀── 生成完成後寫入快照
+                          │
+gallery-store   ◀── 完成媒體同步至畫廊
 ```
 
 **重要設計：可重複載入機制**
@@ -422,11 +428,17 @@ Record = {
 | `lib/websocket-manager.ts` | WebSocket 連線、重連、事件分發、二進位處理 |
 | `lib/workflow-templates.ts` | 內建模板的 `build(params)` |
 | `lib/workflow-parser.ts` | 自定義工作流解析、可設定節點偵測、UI 映射 |
+| `lib/modes.ts` | 七種生成模式的註冊與 meta |
+| `lib/llm-client.ts` | OpenAI 相容 API（Ollama 等）客戶端、錯誤正規化 |
+| `lib/prompt-optimizer.ts` | 提示詞優化／圖片反推的 prompt 構建與解析 |
+| `lib/drag-drop.ts` | 拖放上傳輔助 |
 | `lib/storage.ts` | localStorage 封裝（含版本管理） |
-| `stores/*` | 三個 Zustand store |
+| `stores/*` | 五個 Zustand store（settings/generation/queue/history/gallery） |
 | `hooks/use-generation.ts` | 綁定 client + WebSocket + store 的生成流程 |
-| `hooks/use-gallery.ts` | 畫廊資料與操作 |
-| `app/api/comfyui/*` | Next.js 代理 |
+| `hooks/use-llm.ts` | LLM 優化/反推流程 |
+| `app/api/comfyui/*` | Next.js ComfyUI 代理 |
+| `app/api/llm/*` | Next.js LLM（OpenAI 相容）代理 |
+| `app/queue/` | 生成佇列頁面 |
 
 ---
 
@@ -444,6 +456,71 @@ Record = {
 9. 組裝 media、產生縮圖 → 加入畫廊 + 寫入 history-store
 10. 失敗 → 標記錯誤 → toast 提示
 ```
+
+---
+
+## 14. 生成佇列設計
+
+### 14.1 任務資料模型
+
+```
+QueueTask = {
+  id,             // 本地生成 `q_<ts>_<rand>`
+  params,         // GenerationParams 快照（含 mode）
+  status,         // pending | queued | running | completed | failed | cancelled
+  promptId?,      // ComfyUI prompt_id（實際提交後）
+  progressValue, progressMax,
+  currentNode,
+  error?,
+  createdAt, completedAt?,
+}
+```
+
+### 14.2 佇列流程
+
+```
+用戶連續點「生成」→ 每次加一筆 pending task
+   → 消費循環：取最早的 pending → status=queued → 依 mode 建 workflow
+   → 上傳參考媒體 → queuePrompt → status=running（記錄 prompt_id）
+   → WebSocket 事件（executing/progress/execution_success/error/interrupted）依 prompt_id 更新對應 task
+   → 完成 → 寫入 history-store + gallery-store → status=completed
+   → 失敗/中斷 → status=failed/cancelled
+```
+
+### 14.3 操作
+
+- **重新排序**：僅執行中的待處理（pending）可上移/下移，禁止跳到已開始的任務之前。
+- **中斷**：刪除執行中任務前呼叫 `cancelTask(id)`（`/interrupt`）再移除；佇列中（未開始）直接移除。
+- **載入參數**：將 `task.params` 寫回 `generation-store` 並切換 mode，回到工作台。
+- **清除已完成**：一次移除全部 completed/failed/cancelled。
+
+---
+
+## 15. LLM 提示詞優化與圖片反推
+
+### 15.1 通訊設計
+
+- 瀏覽器隨時呼叫同源 `/api/llm/*` 代理，攜帶 `X-LLM-BaseURL`/`X-LLM-Model`/`X-LLM-ApiKey` header。
+- 代理組裝完整 URL 轉發至 OpenAI 相容 API（預設 Ollama `:11434/v1`），瀏覽器不直接外連。
+- 錯誤正規化與 comfyui-client 相同：`{ ok:true, data }` / `{ ok:false, error }`。
+
+### 15.2 提示詞優化
+
+```
+用戶點「優化提示詞」
+   → buildOptimizeMessages(prompt, negative, imageDescription?) → chat()
+   → parseOptimizedPrompt() 抽 JSON { positive, negative }
+   → 回填 generation-store params.prompt / params.negativePrompt
+```
+
+- System prompt 要求模型只回應 `{"positive": "...", "negative": "..."}` JSON；解析器容忍 code fence 與前後贅字。
+- 無 LLM 連線或解析失敗 → destructive toast「請檢查 LLM 設定」。
+
+### 15.3 圖片反推（多模態）
+
+- 僅模式有參考圖（img2img）時，按鈕改為「反推圖片並優化」。
+- 參考圖經 `getViewUrl` 取代理 URL → 由前端讀成 dataURL → `buildDescribeMessages(dataUrl)` 送多模態 model。
+- 模型回傳圖片英文描述 → 再走優化流程 → 回填正負向提示詞。
 
 ---
 

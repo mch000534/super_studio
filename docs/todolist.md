@@ -9,7 +9,7 @@
 ## A. Phase 0 — 專案初始化與工具鏈
 
 - [x] **A1. 初始化 Next.js 專案**
-  - 於 `super_studio/` 建立 Next.js 14+（App Router）+ TypeScript。
+  - 於 `super_studio/` 建立 Next.js 16（App Router）+ TypeScript。
   - 完成判定：`npm run dev` 可啟動，首頁 render 成功。
 
 - [x] **A2. 安裝並設定 Tailwind + PostCSS**
@@ -235,8 +235,8 @@
   - 放大倍數（2x/4x）+ 放大模型下拉。
   - 完成判定：UIUX 5.5。
 
-- [x] **E1.3 建立 source-picker**（`components/workspace/source-picker.tsx`）
-  - 來源圖片拖放或選已生成圖、顯示目前尺寸。
+- [x] **E1.3 建立放大控制/彈窗**（`components/workspace/upscale-controls.tsx` + `upscale-dialog.tsx`）
+  - 放大倍數（2x/4x）＋來源媒體選擇彈窗（自畫廊卡片觸發，含上傳處理）。
   - 完成判定：UIUX 5.5。
 
 ### E2. 影片放大
@@ -303,6 +303,53 @@
   - 列表、篩選（模式/時間）、重新載入、批量刪除。
   - 完成判定：符合 US-07 全部三條。
 
+### F3. 畫廊 Store 拆分
+- [x] **F3.1 建立 gallery-store**（`stores/gallery-store.ts`）
+  - 畫廊資料與操作獨立於 history-store。
+  - 完成判定：畫廊與歷史資料可獨立更新。
+
+---
+
+## H. Phase 6 — 生成佇列與 LLM 整合
+
+### H1. 生成佇列
+- [x] **H1.1 建立 queue-store**（`stores/queue-store.ts`）
+  - 任務資料模型（status：pending/queued/running/completed/failed/cancelled）、add/remove/move/update。
+  - 完成判定：多次生成可入列且狀態正確流轉。
+
+- [x] **H1.2 建立佇列頁**（`app/queue/page.tsx`）
+  - 進行中／已完成分區、全選、批次刪除、清除已完成、重新排序（pending 可上移/下移）。
+  - 完成判定：佇列操作符合 UIUX §2.2/§8 擴充。
+
+- [x] **H1.3 佇列計數整合**
+  - Header 角標與左欄「生成佇列」連結顯示待處理數。
+  - 完成判定：角落標即時反映 pending 數量。
+
+- [x] **H1.4 佇列與生成流程整合**
+  - `use-generation` 支援 `cancelTask(id)`，刪除執行中/佇列中任務時先中斷。
+  - 完成判定：佇列中斷與參數重載可使用。
+
+### H2. LLM 提示詞優化
+- [x] **H2.1 建立 LLM 代理路徑**（`app/api/llm/[...path]/route.ts`）
+  - 依 `X-LLM-BaseURL`/`X-LLM-Model`/`X-LLM-ApiKey` header 轉發至 OpenAI 相容 API。
+  - 完成判定：`/api/llm/chat/completions` 與 `/api/llm/models` 可用。
+
+- [x] **H2.2 建立 llm-client**（`lib/llm-client.ts`）
+  - `chat`、`test` 方法，統一回傳 `{ ok, data }`/`{ ok:false, error }`。
+  - 完成判定：錯誤正規化與 comfyui-client 一致。
+
+- [x] **H2.3 建立 prompt-optimizer**（`lib/prompt-optimizer.ts`）
+  - 系統提示詞、`buildOptimizeMessages`、`buildDescribeMessages`、`parseOptimizedPrompt`。
+  - 完成判定：可將口語描述擴充為英文正向/負向提示詞並解析回填。
+
+- [x] **H2.4 提示詞面板整合**
+  - `prompt-panel` 加入「優化提示詞」/「反推圖片並優化」按鈕。
+  - 完成判定：優化結果回填正向/負向輸入框並 toast 提示。
+
+- [x] **H2.5 設定頁 LLM 區塊**（`components/settings/llm-config.tsx`）
+  - Base URL / Model / API Key 輸入與連線測試。
+  - 完成判定：設定持久化且測試成功/失敗有明確回饋。
+
 ---
 
 ## G. 品質與收尾
@@ -338,6 +385,7 @@
 | Phase 3 圖生圖+影片 | D |
 | Phase 4 放大        | E |
 | Phase 5 進階        | F |
+| Phase 6 佇列 + LLM  | H |
 | 收尾               | G |
 
 ---
@@ -350,8 +398,9 @@ A1-A5（初始化）
         └─ C1(模板) → C2(面板) → C3(流程) → C4(畫廊)
              └─ D1(圖生圖) → D2/D3(影片) → D4(模式聯動)
                   └─ E1/E2(放大) → E3(畫廊放大)
-                       └─ F1(自定義) → F2(歷史)
-                            └─ G(品質收尾)
+                       └─ F1(自定義) → F2(歷史) → F3(畫廊拆分)
+                            └─ H(佇列 + LLM)
+                                 └─ G(品質收尾)
 ```
 
 ---

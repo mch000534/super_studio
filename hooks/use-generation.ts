@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useGenerationStore } from '@/stores/generation-store';
+import { useQueueStore, type QueueTask } from '@/stores/queue-store';
 import { useSettingsStore } from '@/stores/settings-store';
 import { useWebSocket } from '@/hooks/use-websocket';
 import { comfyuiClient } from '@/lib/comfyui-client';
@@ -33,10 +34,6 @@ function nodeName(nodeId: string): string {
   return NODE_NAMES[nodeId] || `節點 #${nodeId}`;
 }
 
-function randomSeed(): number {
-  return Math.floor(Math.random() * 0x7fffffff);
-}
-
 let globalResultHandler: ((media: MediaItem[], mode: Mode, params: GenerationParams) => void) | null =
   null;
 
@@ -46,14 +43,41 @@ export function setResultHandler(
   globalResultHandler = handler;
 }
 
+function syncGenerationStore(task: QueueTask | null) {
+  const g = useGenerationStore.getState();
+  if (!task) {
+    g.resetGeneration();
+    return;
+  }
+  g.setParams(task.params);
+  g.setPromptId(task.promptId || '');
+  g.setProgress(task.progressValue, task.progressMax);
+  g.setCurrentNode(task.currentNode);
+  if (task.error) g.setError(task.error);
+
+  const statusMap: Record<string, typeof g.status> = {
+    pending: 'queued',
+    queued: 'queued',
+    running: 'running',
+    completed: 'success',
+    failed: 'error',
+    cancelled: 'interrupted',
+  };
+  g.setStatus(statusMap[task.status] || 'idle');
+}
+
+let latestSubmitNext: (() => Promise<void>) | null = null;
+let submitLock = false;
+
 export function useGeneration() {
-  const store = useGenerationStore();
   const { authHeader } = useSettingsStore();
   const ws = useWebSocket();
-  const pendingPromptIdsRef = useRef<Set<string>>(new Set());
-  const promptParamsRef = useRef<Map<string, GenerationParams>>(new Map());
 
-  const isBusy = store.status === 'queued' || store.status === 'running';
+  const queueTasks = useQueueStore((s) => s.tasks);
+
+  const isBusy = queueTasks.some(
+    (t) => t.status === 'pending' || t.status === 'queued' || t.status === 'running'
+  );
 
   const connect = useCallback(() => {
     const host = useSettingsStore.getState().comfyuiHost;
@@ -64,39 +88,97 @@ export function useGeneration() {
     connect();
   }, [connect]);
 
+  // Recover queue state on mount (e.g. a task completed while navigating pages
+  // and its WebSocket events were missed).
+  useEffect(() => {
+    const q = useQueueStore.getState();
+    if (!q.executingPromptId) {
+      setTimeout(() => latestSubmitNext?.(), 0);
+      return;
+    }
+    const executing = q.tasks.find((t) => t.promptId === q.executingPromptId);
+    if (!executing) {
+      useQueueStore.getState().setExecutingPromptId(null);
+      setTimeout(() => latestSubmitNext?.(), 0);
+      return;
+    }
+    syncGenerationStore(executing);
+  }, []);
+
   useEffect(() => {
     const unsub = ws.onEvent((event) => {
-      const g = useGenerationStore.getState();
+      const q = useQueueStore.getState();
+      const currentPromptId = q.executingPromptId;
+      const runningTask = currentPromptId
+        ? q.tasks.find((t) => t.promptId === currentPromptId)
+        : q.tasks.find((t) => t.status === 'running' || t.status === 'queued');
+
       switch (event.type) {
         case 'status': {
           const data = event.data as { status?: { exec_info?: { queue_remaining?: number } } };
-          g.setQueueRemaining(data.status?.exec_info?.queue_remaining ?? 0);
+          useGenerationStore.getState().setQueueRemaining(
+            data.status?.exec_info?.queue_remaining ?? 0
+          );
           break;
         }
         case 'executing': {
           const data = event.data as { node?: string | null; prompt_id?: string };
           if (data.node === null) {
-            // which prompt finished?
+            // task finished — handled by execution_success / executing node===null below
           } else if (data.node) {
-            g.setCurrentNode(nodeName(data.node));
+            if (runningTask) {
+              useQueueStore.getState().updateTask(runningTask.id, {
+                currentNode: nodeName(data.node),
+                status: 'running',
+              });
+              syncGenerationStore({
+                ...runningTask,
+                currentNode: nodeName(data.node),
+                status: 'running',
+              });
+            }
           }
           break;
         }
         case 'progress': {
           const data = event.data as { value: number; max: number };
-          if (data.max > 0 && g.status !== 'idle') {
-            g.setProgress(data.value, data.max);
+          if (data.max > 0 && runningTask) {
+            useQueueStore.getState().updateTask(runningTask.id, {
+              progressValue: data.value,
+              progressMax: data.max,
+            });
+            syncGenerationStore({
+              ...runningTask,
+              progressValue: data.value,
+              progressMax: data.max,
+            });
           }
           break;
         }
         case 'execution_error': {
           const data = event.data as { exception_message?: string };
-          g.setStatus('error');
-          g.setError(data.exception_message || '執行發生錯誤');
+          if (runningTask) {
+            useQueueStore.getState().updateTask(runningTask.id, {
+              status: 'failed',
+              error: data.exception_message || '執行發生錯誤',
+              completedAt: Date.now(),
+            });
+            useQueueStore.getState().setExecutingPromptId(null);
+            syncGenerationStore(null);
+            setTimeout(() => latestSubmitNext?.(), 0);
+          }
           break;
         }
         case 'execution_interrupted': {
-          g.setStatus('interrupted');
+          if (runningTask) {
+            useQueueStore.getState().updateTask(runningTask.id, {
+              status: 'cancelled',
+              completedAt: Date.now(),
+            });
+            useQueueStore.getState().setExecutingPromptId(null);
+            syncGenerationStore(null);
+            setTimeout(() => latestSubmitNext?.(), 0);
+          }
           break;
         }
       }
@@ -111,130 +193,54 @@ export function useGeneration() {
     return unsub;
   }, [ws]);
 
-  const submit = useCallback(
-    async (overrideParams?: Partial<GenerationParams>) => {
-      const settings = useSettingsStore.getState();
-      const g = useGenerationStore.getState();
-      const mode = settings.currentMode;
-      const params = { ...g.params, ...overrideParams, mode };
-
-      if (!params.prompt.trim() && !['img_upscale', 'vid_upscale'].includes(mode)) {
-        g.setError('請輸入提示詞');
-        return;
-      }
-
-      g.resetGeneration();
-      g.setParams(params);
-      g.setStatus('queued');
-
-      const clientId = ws.clientId;
-      const host = settings.comfyuiHost;
-      if (!host) {
-        g.setError('尚未設定 ComfyUI 地址');
-        g.setStatus('error');
-        return;
-      }
-
-      pendingPromptIdsRef.current = new Set();
-      promptParamsRef.current = new Map();
-
-      const isBatchMode = mode === 'text2img';
-      const count = isBatchMode && params.batch > 1 ? params.batch : 1;
-      const randomize = mode !== 'custom' && (params.seed === -1 || count > 1);
-
-      const pending = new Set<string>();
-      const paramsMap = new Map<string, GenerationParams>();
-
-      for (let i = 0; i < count; i++) {
-        const seed = randomize ? randomSeed() : params.seed;
-        const itemParams: GenerationParams = {
-          ...params,
-          seed,
-          ...(count > 1 ? { batch: 1 } : {}),
-        };
-
-        let workflow = buildWorkflow(mode, itemParams);
-        if (mode === 'custom') {
-          workflow = itemParams.customWorkflow as Record<string, never>;
-          if (!workflow || Object.keys(workflow).length === 0) {
-            g.setError('尚未載入自定義工作流');
-            g.setStatus('error');
-            return;
-          }
-        }
-
-        const result = await comfyuiClient.queuePrompt(workflow, clientId, host, authHeader);
-        if (!result.ok) {
-          g.setStatus('error');
-          g.setError(resolveError(result.error.message, result.error.nodeErrors));
-          if (i === 0) return;
-          break;
-        }
-
-        pending.add(result.data.prompt_id);
-        paramsMap.set(result.data.prompt_id, itemParams);
-      }
-
-      if (pending.size === 0) return;
-      pendingPromptIdsRef.current = pending;
-      promptParamsRef.current = paramsMap;
-      g.setPromptId([...pending][0]);
-      g.setStatus('running');
-    },
-    [ws.clientId, authHeader]
-  );
-
-  const interrupt = useCallback(async () => {
-    const g = useGenerationStore.getState();
-    const settings = useSettingsStore.getState();
-    g.setInterruptRequested(true);
-    const result = await comfyuiClient.interrupt(settings.comfyuiHost, authHeader);
-    if (!result.ok) {
-      g.setError(result.error.message);
-    }
-    g.setInterruptRequested(false);
-  }, [authHeader]);
-
   const fetchResult = useCallback(
     async (promptId: string) => {
       const settings = useSettingsStore.getState();
-      const pending = pendingPromptIdsRef.current;
-      if (!pending.has(promptId)) return;
-      pending.delete(promptId);
+      const q = useQueueStore.getState();
+      const task = q.tasks.find((t) => t.promptId === promptId);
+      if (!task) return;
+      if (task.status === 'completed' || task.status === 'cancelled') return;
+
       const host = settings.comfyuiHost;
       const history = await comfyuiClient.getHistory(promptId, host, authHeader);
-      if (!history.ok) return;
-
-      const entry = history.data[promptId];
-      if (!entry) return;
 
       const media: MediaItem[] = [];
-      Object.values(entry.outputs || {}).forEach((output) => {
-        const collect = (files: FileInfo[] | undefined, kind: 'image' | 'video') => {
-          (files || []).forEach((f) => {
-            media.push({
-              filename: f.filename,
-              subfolder: f.subfolder,
-              type: f.type,
-              kind,
-              url: comfyuiClient.getViewUrl(f.filename, host, f.subfolder, f.type, {
-                authHeader,
-              }),
-              timestamp: Date.now(),
-            });
+      if (history.ok) {
+        const entry = history.data[promptId];
+        if (entry) {
+          Object.values(entry.outputs || {}).forEach((output) => {
+            const collect = (files: FileInfo[] | undefined, kind: 'image' | 'video') => {
+              (files || []).forEach((f) => {
+                media.push({
+                  filename: f.filename,
+                  subfolder: f.subfolder,
+                  type: f.type,
+                  kind,
+                  url: comfyuiClient.getViewUrl(f.filename, host, f.subfolder, f.type, {
+                    authHeader,
+                  }),
+                  timestamp: Date.now(),
+                });
+              });
+            };
+            collect(output.images, 'image');
+            collect(output.gifs, 'video');
           });
-        };
-        collect(output.images, 'image');
-        collect(output.gifs, 'video');
-      });
-
-      const g = useGenerationStore.getState();
-      if (media.length > 0) {
-        const recParams = promptParamsRef.current.get(promptId);
-        globalResultHandler?.(media, recParams?.mode ?? g.params.mode, recParams ?? g.params);
-        g.setStatus('success');
+        }
       }
-      promptParamsRef.current.delete(promptId);
+
+      if (media.length > 0) {
+        globalResultHandler?.(media, task.params.mode, task.params);
+      }
+
+      useQueueStore.getState().updateTask(task.id, {
+        status: 'completed',
+        completedAt: Date.now(),
+      });
+      useQueueStore.getState().setExecutingPromptId(null);
+      syncGenerationStore(null);
+      // Advance to the next pending task
+      setTimeout(() => latestSubmitNext?.(), 0);
     },
     [authHeader]
   );
@@ -254,13 +260,179 @@ export function useGeneration() {
     return unsub;
   }, [ws, fetchResult]);
 
+  const buildAndSubmit = useCallback(
+    async (task: QueueTask): Promise<boolean> => {
+      const settings = useSettingsStore.getState();
+      const params = task.params;
+      const mode = params.mode;
+      const host = settings.comfyuiHost;
+
+      if (!host) {
+        useQueueStore.getState().updateTask(task.id, {
+          status: 'failed',
+          error: '尚未設定 ComfyUI 地址',
+          completedAt: Date.now(),
+        });
+        return false;
+      }
+
+      let workflow = buildWorkflow(mode, params);
+      if (mode === 'custom') {
+        workflow = params.customWorkflow as Record<string, never>;
+        if (!workflow || Object.keys(workflow).length === 0) {
+          useQueueStore.getState().updateTask(task.id, {
+            status: 'failed',
+            error: '尚未載入自定義工作流',
+            completedAt: Date.now(),
+          });
+          return false;
+        }
+      }
+
+      useQueueStore.getState().updateTask(task.id, { status: 'queued' });
+
+      const result = await comfyuiClient.queuePrompt(
+        workflow,
+        ws.clientId,
+        host,
+        authHeader
+      );
+      if (!result.ok) {
+        useQueueStore.getState().updateTask(task.id, {
+          status: 'failed',
+          error: resolveError(result.error.message, result.error.nodeErrors),
+          completedAt: Date.now(),
+        });
+        return false;
+      }
+
+      useQueueStore.getState().updateTask(task.id, {
+        promptId: result.data.prompt_id,
+        status: 'queued',
+      });
+
+      // If nothing is executing, this becomes the running task
+      const q = useQueueStore.getState();
+      if (!q.executingPromptId) {
+        useQueueStore.getState().setExecutingPromptId(result.data.prompt_id);
+        useQueueStore.getState().updateTask(task.id, {
+          status: 'running',
+          progressValue: 0,
+          progressMax: 0,
+        });
+        syncGenerationStore({
+          ...task,
+          promptId: result.data.prompt_id,
+          status: 'running',
+        });
+      }
+
+      return true;
+    },
+    [ws.clientId, authHeader]
+  );
+
+  const submitNext = useCallback(async () => {
+    if (submitLock) return;
+    submitLock = true;
+    try {
+      while (true) {
+        const q = useQueueStore.getState();
+        if (q.executingPromptId) break;
+
+        const next = q.getNextPending();
+        if (!next) break;
+
+        const ok = await buildAndSubmit(next);
+        if (!ok) continue;
+        break;
+      }
+    } finally {
+      submitLock = false;
+    }
+  }, [buildAndSubmit]);
+
+  // Keep module-level ref for use in WS callbacks
+  useEffect(() => {
+    latestSubmitNext = submitNext;
+  });
+
+  const submit = useCallback(
+    async (overrideParams?: Partial<GenerationParams>) => {
+      const settings = useSettingsStore.getState();
+      const g = useGenerationStore.getState();
+      const mode = settings.currentMode;
+      const params = { ...g.params, ...overrideParams, mode };
+
+      if (!params.prompt.trim() && !['custom', 'img_upscale', 'vid_upscale'].includes(mode)) {
+        g.setError('請輸入提示詞');
+        return;
+      }
+
+      g.resetGeneration();
+      useQueueStore.getState().addTask(params);
+
+      await submitNext();
+    },
+    [submitNext]
+  );
+
+  const interrupt = useCallback(async () => {
+    const q = useQueueStore.getState();
+    const currentPromptId = q.executingPromptId;
+    if (!currentPromptId) return;
+
+    const task = q.tasks.find((t) => t.promptId === currentPromptId);
+    if (task) {
+      useQueueStore.getState().updateTask(task.id, {
+        status: 'cancelled',
+        completedAt: Date.now(),
+      });
+    }
+    useQueueStore.getState().setExecutingPromptId(null);
+    syncGenerationStore(null);
+
+    const settings = useSettingsStore.getState();
+    await comfyuiClient.interrupt(settings.comfyuiHost, authHeader);
+
+    setTimeout(() => latestSubmitNext?.(), 0);
+  }, [authHeader]);
+
+  const cancelTask = useCallback(
+    async (taskId: string) => {
+      const q = useQueueStore.getState();
+      const task = q.tasks.find((t) => t.id === taskId);
+      if (!task) return;
+
+      if (task.status === 'pending') {
+        useQueueStore.getState().removeTask(taskId);
+        return;
+      }
+
+      if (task.status === 'running' || task.status === 'queued') {
+        if (q.executingPromptId === task.promptId) {
+          const settings = useSettingsStore.getState();
+          await comfyuiClient.interrupt(settings.comfyuiHost, authHeader);
+          useQueueStore.getState().setExecutingPromptId(null);
+          syncGenerationStore(null);
+          setTimeout(() => latestSubmitNext?.(), 0);
+        }
+        useQueueStore.getState().updateTask(taskId, {
+          status: 'cancelled',
+          completedAt: Date.now(),
+        });
+      }
+    },
+    [authHeader]
+  );
+
   const reset = useCallback(() => {
-    pendingPromptIdsRef.current = new Set();
-    promptParamsRef.current = new Map();
+    useQueueStore.getState().setExecutingPromptId(null);
+    useQueueStore.getState().clearCompleted();
     useGenerationStore.getState().resetGeneration();
   }, []);
 
-  return { submit, interrupt, reset, isBusy, connect };
+  return { submit, interrupt, reset, isBusy, connect, cancelTask, submitNext };
 }
 
 function resolveError(message: string, nodeErrors?: Record<string, unknown>): string {

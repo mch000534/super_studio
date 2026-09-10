@@ -227,12 +227,16 @@ export function buildImg2Img(params: GenerationParams): Record<string, WorkflowN
         crop: 'disabled',
       },
     },
+    '6': {
+      class_type: 'RepeatLatentBatch',
+      inputs: { samples: ['5', 0], amount: params.batch },
+    },
     '3': {
       class_type: 'KSampler',
       inputs: {
         cfg: params.cfg ?? 1,
         denoise: params.denoise ?? 0.6,
-        latent_image: ['5', 0],
+        latent_image: ['6', 0],
         model: ['11', 0],
         negative: ['33', 0],
         positive: ['27', 0],
@@ -352,6 +356,7 @@ export function buildVidUpscale(params: GenerationParams): Record<string, Workfl
   const videoName = params.imageName || '';
   const vaeName = params.vaeName || 'seedvr2_ema_vae_fp16.safetensors';
   const steps = 20;
+  const scale = params.scale ?? 2;
 
   const nodes: Record<string, WorkflowNode> = {
     '1': {
@@ -361,6 +366,14 @@ export function buildVidUpscale(params: GenerationParams): Record<string, Workfl
     '2': {
       class_type: 'GetVideoComponents',
       inputs: { video: ['1', 0] },
+    },
+    'vid_resize': {
+      class_type: 'ImageScaleBy',
+      inputs: {
+        image: ['2', 0],
+        upscale_method: 'lanczos',
+        scale_by: scale,
+      },
     },
     '3': {
       class_type: 'VAELoader',
@@ -375,7 +388,7 @@ export function buildVidUpscale(params: GenerationParams): Record<string, Workfl
     },
     '5': {
       class_type: 'VAEEncode',
-      inputs: { pixels: ['2', 0], vae: ['3', 0] },
+      inputs: { pixels: ['vid_resize', 0], vae: ['3', 0] },
     },
     '6': {
       class_type: 'SeedVR2TemporalChunk',
@@ -422,7 +435,7 @@ export function buildVidUpscale(params: GenerationParams): Record<string, Workfl
       class_type: 'SeedVR2PostProcessing',
       inputs: {
         images: ['10', 0],
-        original_resized_images: ['2', 0],
+        original_resized_images: ['vid_resize', 0],
         color_correction_method: 'lab',
       },
     },

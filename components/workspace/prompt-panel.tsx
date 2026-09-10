@@ -1,10 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Sparkles } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import { useGenerationStore } from '@/stores/generation-store';
+import { usePromptOptimizer } from '@/hooks/use-llm';
+import { useSettingsStore } from '@/stores/settings-store';
+import { comfyuiClient } from '@/lib/comfyui-client';
+import { toast } from '@/hooks/use-toast';
 
 interface PromptPanelProps {
   showNegative?: boolean;
@@ -14,12 +19,56 @@ interface PromptPanelProps {
 export function PromptPanel({ showNegative = true, placeholder }: PromptPanelProps) {
   const params = useGenerationStore((s) => s.params);
   const updateParams = useGenerationStore((s) => s.updateParams);
+  const { comfyuiHost, authHeader } = useSettingsStore();
+  const { optimizing, optimize } = usePromptOptimizer();
   const [showNegativePanel, setShowNegativePanel] = useState(showNegative && !!params.negativePrompt);
+
+  const referenceImageUrl =
+    params.mode === 'img2img' && params.imageName
+      ? comfyuiClient.getViewUrl(params.imageName, comfyuiHost, '', 'input', { authHeader })
+      : undefined;
+
+  const handleOptimize = async () => {
+    const result = await optimize(
+      params.prompt,
+      params.negativePrompt,
+      referenceImageUrl ? { imageUrl: referenceImageUrl } : undefined
+    );
+    if (!result) {
+      toast({ variant: 'destructive', title: '優化失敗', description: '請檢查 LLM 設定' });
+      setShowNegativePanel(true);
+      return;
+    }
+    updateParams({ prompt: result.positive, negativePrompt: result.negative });
+    setShowNegativePanel(true);
+    toast({
+      title: '優化完成',
+      description: referenceImageUrl
+        ? '已反推圖片並回填優化後的正向與負向提示詞'
+        : '已回填優化後的正向與負向提示詞',
+    });
+  };
 
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label>提示詞</Label>
+        <div className="flex items-center justify-between">
+          <Label>提示詞</Label>
+          <Button
+            onClick={handleOptimize}
+            disabled={optimizing || (!params.prompt.trim() && !referenceImageUrl)}
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+          >
+            {optimizing ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3" />
+            )}
+            {referenceImageUrl ? '反推圖片並優化' : '優化提示詞'}
+          </Button>
+        </div>
         <Textarea
           value={params.prompt}
           onChange={(e) => updateParams({ prompt: e.target.value })}

@@ -133,6 +133,7 @@ export default function HistoryPage() {
               checked={allSelected}
               onChange={toggleAll}
               disabled={filtered.length === 0}
+              suppressHydrationWarning
               className="h-4 w-4"
             />
             全選
@@ -156,11 +157,21 @@ export default function HistoryPage() {
                 type="checkbox"
                 checked={selected.has(rec.id)}
                 onChange={() => toggle(rec.id)}
+                suppressHydrationWarning
                 className="h-4 w-4"
               />
               {rec.thumbnail ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={rec.thumbnail} alt="" className="h-12 w-12 rounded object-cover" />
+                rec.media[0]?.kind === 'video' ? (
+                  <video
+                    src={rec.thumbnail}
+                    muted
+                    preload="metadata"
+                    className="h-12 w-12 rounded object-cover"
+                  />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={rec.thumbnail} alt="" className="h-12 w-12 rounded object-cover" />
+                )
               ) : (
                 <div className="h-12 w-12 rounded bg-secondary" />
               )}

@@ -1,11 +1,12 @@
 'use client';
 
-import { Image as ImageIcon, Images, Clapperboard, Film, ZoomIn, ScanLine, Braces } from 'lucide-react';
+import Link from 'next/link';
+import { Image as ImageIcon, Images, Clapperboard, Film, ZoomIn, ScanLine, Braces, ListTodo } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MODES } from '@/lib/modes';
 import { useSettingsStore } from '@/stores/settings-store';
 import type { Mode } from '@/types/workflow';
-import { useGenerationStore } from '@/stores/generation-store';
+import { useQueueStore, queuePendingCount } from '@/stores/queue-store';
 
 const ICONS: Record<Mode, React.ComponentType<{ className?: string }>> = {
   text2img: ImageIcon,
@@ -20,7 +21,9 @@ const ICONS: Record<Mode, React.ComponentType<{ className?: string }>> = {
 export function Sidebar() {
   const currentMode = useSettingsStore((s) => s.currentMode);
   const setMode = useSettingsStore((s) => s.setMode);
-  const queueRemaining = useGenerationStore((s) => s.queueRemaining);
+  const queueTasks = useQueueStore((s) => s.tasks);
+
+  const pendingCount = queuePendingCount(queueTasks);
 
   return (
     <aside className="hidden w-52 shrink-0 flex-col border-r md:flex">
@@ -46,11 +49,17 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="border-t p-3 text-xs text-muted-foreground">
-        <div className="flex items-center justify-between">
-          <span>生成佇列</span>
-          <span className="font-mono">{queueRemaining}</span>
-        </div>
+      <div className="border-t p-3">
+        <Link
+          href="/queue"
+          className="flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <div className="flex items-center gap-2">
+            <ListTodo className="h-3.5 w-3.5" />
+            <span>生成佇列</span>
+          </div>
+          <span className="font-mono">{pendingCount}</span>
+        </Link>
       </div>
     </aside>
   );

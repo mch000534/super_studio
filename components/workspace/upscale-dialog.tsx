@@ -16,6 +16,20 @@ import { comfyuiClient } from '@/lib/comfyui-client';
 import { toast } from '@/hooks/use-toast';
 import type { MediaItem } from '@/types/workflow';
 
+let lastUpscaleSourceUrl: string | null = null;
+
+export function getUpscaleSourceUrl(): string | null {
+  return lastUpscaleSourceUrl;
+}
+
+export function setUpscaleSourceUrl(url: string | null): void {
+  lastUpscaleSourceUrl = url;
+}
+
+export function clearUpscaleSourceUrl(): void {
+  lastUpscaleSourceUrl = null;
+}
+
 interface UpscaleDialogProps {
   target: MediaItem | null;
   onClose: () => void;
@@ -46,6 +60,7 @@ export function UpscaleDialog({ target, onClose }: UpscaleDialogProps) {
 
       updateParams({ imageName: r.data.name, scale });
       setMode(target.kind === 'image' ? 'img_upscale' : 'vid_upscale');
+      lastUpscaleSourceUrl = target.url;
       toast({ title: '已帶入來源', description: `正在放大 ${target.kind === 'image' ? '圖片' : '影片'}` });
       onClose();
     } catch (e) {

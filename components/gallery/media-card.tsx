@@ -2,6 +2,7 @@
 
 import { Download, Maximize2, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { setGalleryDragData } from '@/lib/drag-drop';
 import type { MediaItem } from '@/types/workflow';
 
 interface MediaCardProps {
@@ -19,9 +20,15 @@ export function MediaCard({ item, onOpen, onUpscale }: MediaCardProps) {
     a.click();
   };
 
+  const handleDragStart = (e: React.DragEvent) => {
+    setGalleryDragData(e.dataTransfer, item);
+  };
+
   return (
     <div
       className="group relative cursor-pointer overflow-hidden rounded-lg border bg-card"
+      draggable
+      onDragStart={handleDragStart}
       onClick={() => onOpen(item)}
     >
       {item.kind === 'image' ? (

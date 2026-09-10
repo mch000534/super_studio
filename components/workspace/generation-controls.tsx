@@ -1,9 +1,10 @@
 'use client';
 
-import { Loader2, Square } from 'lucide-react';
+import { Loader2, Square, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useGenerationStore } from '@/stores/generation-store';
+import { useQueueStore, queuePendingCount } from '@/stores/queue-store';
 import { useComfyUI } from '@/hooks/use-comfyui';
 
 interface GenerationControlsProps {
@@ -27,10 +28,19 @@ export function GenerationControls({
   const progressMax = useGenerationStore((s) => s.progressMax);
   const currentNode = useGenerationStore((s) => s.currentNode);
   const interrupting = useGenerationStore((s) => s.interruptRequested);
+  const queueTasks = useQueueStore((s) => s.tasks);
 
+  const pendingCount = queuePendingCount(queueTasks);
   const busy = status === 'queued' || status === 'running';
-  const canGenerate = isConnected && !busy;
+  const canGenerate = isConnected;
   const pct = progressMax > 0 ? Math.round((progressValue / progressMax) * 100) : 0;
+
+  let buttonText = label;
+  if (busy && pendingCount > 0) {
+    buttonText = `加入佇列 (${pendingCount})`;
+  } else if (busy) {
+    buttonText = '生成中…';
+  }
 
   return (
     <div className="space-y-3">
@@ -41,12 +51,18 @@ export function GenerationControls({
           className="flex-1"
           title={!isConnected ? '請先在設定中連接 ComfyUI' : undefined}
         >
-          {status === 'queued' ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          {busy ? (
+            <>
+              {pendingCount > 0 ? (
+                <Plus className="mr-2 h-4 w-4" />
+              ) : (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+            </>
           ) : (
             <span className="mr-2">✦</span>
           )}
-          {status === 'queued' ? '佇列中…' : busy ? '生成中…' : label}
+          {buttonText}
         </Button>
         {busy && (
           <Button variant="destructive" size="icon" onClick={onInterrupt} disabled={interrupting}>
@@ -78,6 +94,12 @@ export function GenerationControls({
 
       {status === 'error' && (
         <p className="text-xs text-destructive">生成失敗 — 請查看錯誤訊息。</p>
+      )}
+
+      {pendingCount > 1 && (
+        <p className="text-xs text-muted-foreground">
+          佇列中還有 {pendingCount - 1} 個待處理任務
+        </p>
       )}
     </div>
   );

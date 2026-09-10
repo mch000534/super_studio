@@ -6,27 +6,29 @@ import { MediaCard } from '@/components/gallery/media-card';
 import { ImageViewer } from '@/components/gallery/image-viewer';
 import { GeneratingCard } from '@/components/gallery/generating-card';
 import { useGalleryStore } from '@/stores/gallery-store';
-import { useGenerationStore } from '@/stores/generation-store';
+import { useQueueStore } from '@/stores/queue-store';
 import type { MediaItem } from '@/types/workflow';
 
 interface OutputGalleryProps {
   onUpscale: (item: MediaItem) => void;
+  onCancelTask?: (taskId: string) => void;
 }
 
-export function OutputGallery({ onUpscale }: OutputGalleryProps) {
+export function OutputGallery({ onUpscale, onCancelTask }: OutputGalleryProps) {
   const items = useGalleryStore((s) => s.items);
-  const status = useGenerationStore((s) => s.status);
-  const preview = useGenerationStore((s) => s.preview);
+  const queueTasks = useQueueStore((s) => s.tasks);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
-  const generating = status === 'queued' || status === 'running';
+  const hasActiveTasks = queueTasks.some(
+    (t) => t.status === 'pending' || t.status === 'queued' || t.status === 'running'
+  );
 
   return (
     <div className="h-full min-h-0 overflow-y-auto p-4">
       <div className="space-y-4">
-        {generating && <GeneratingCard preview={preview} />}
+        {hasActiveTasks && <GeneratingCard preview={null} onCancelTask={onCancelTask} />}
 
-        {items.length === 0 && !generating ? (
+        {items.length === 0 && !hasActiveTasks ? (
           <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
             <Images className="h-12 w-12 text-muted-foreground/40" />
             <div>

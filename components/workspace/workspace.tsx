@@ -8,10 +8,12 @@ import { OutputGallery } from '@/components/gallery/output-gallery';
 import { UpscaleDialog } from '@/components/workspace/upscale-dialog';
 import { useGalleryStore } from '@/stores/gallery-store';
 import { useHistoryStore } from '@/stores/history-store';
+import { useGeneration } from '@/hooks/use-generation';
 import type { MediaItem } from '@/types/workflow';
 
 export function Workspace() {
   const [upscaleTarget, setUpscaleTarget] = useState<MediaItem | null>(null);
+  const { cancelTask } = useGeneration();
 
   useEffect(() => {
     const seen = new Map<string, MediaItem>();
@@ -33,7 +35,7 @@ export function Workspace() {
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="min-w-0 flex-1">
-          <OutputGallery onUpscale={handleUpscale} />
+          <OutputGallery onUpscale={handleUpscale} onCancelTask={cancelTask} />
         </main>
         <RightPanel />
       </div>

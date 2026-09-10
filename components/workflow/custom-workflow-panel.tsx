@@ -67,10 +67,16 @@ export function CustomWorkflowPanel() {
       {parsed && workflow && (
         <>
           <Separator />
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold">動態參數</h3>
-            <WorkflowParams params={parsed.params} values={values} onChange={handleChange} />
-          </div>
+          <details className="group space-y-1">
+            <summary className="flex cursor-pointer items-center gap-1.5 text-sm font-semibold select-none [&::-webkit-details-marker]:hidden">
+              <span className="transition-transform group-open:rotate-90">▸</span>
+              動態參數
+              <span className="text-xs font-normal text-muted-foreground">({parsed.params.length})</span>
+            </summary>
+            <div className="pt-1.5">
+              <WorkflowParams params={parsed.params} values={values} onChange={handleChange} />
+            </div>
+          </details>
           <Separator />
           <WorkflowEditor workflow={workflow} />
           <Separator />
