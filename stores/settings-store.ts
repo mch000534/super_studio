@@ -21,7 +21,7 @@ interface SettingsState {
 }
 
 export const DEFAULT_HOST = 'http://127.0.0.1:8188';
-export const DEFAULT_LLM_MODEL = 'qwen3-vl:8b';
+export const DEFAULT_LLM_MODEL = 'qwen3-vl:4b';
 
 export function getDefaultHost(): string {
   if (typeof window === 'undefined' || !window.location.hostname) return DEFAULT_HOST;
@@ -54,11 +54,15 @@ export const useSettingsStore = create<SettingsState>()(
       name: 'super-studio-settings',
       version: 1,
       migrate: (persistedState: unknown) => {
-        const s = persistedState as { comfyuiHost?: string };
-        if (s?.comfyuiHost === 'http://127.0.0.1:8188') {
-          return { ...s, comfyuiHost: getDefaultHost() };
+        const s = persistedState as { comfyuiHost?: string; llmModel?: string };
+        const migrated: unknown = { ...(s as object) };
+        if ((s as { comfyuiHost?: string })?.comfyuiHost === 'http://127.0.0.1:8188') {
+          (migrated as { comfyuiHost?: string }).comfyuiHost = getDefaultHost();
         }
-        return persistedState;
+        if ((s as { llmModel?: string })?.llmModel === 'qwen3-vl:8b') {
+          (migrated as { llmModel?: string }).llmModel = DEFAULT_LLM_MODEL;
+        }
+        return migrated;
       },
       partialize: (s) => ({
         comfyuiHost: s.comfyuiHost,

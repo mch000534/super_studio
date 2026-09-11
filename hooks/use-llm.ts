@@ -11,7 +11,7 @@ import {
 import type { OptimizedPrompt } from '@/lib/prompt-optimizer';
 import { toast } from '@/hooks/use-toast';
 
-const MAX_IMAGE_EDGE = 1024;
+const MAX_IMAGE_EDGE = 768;
 
 async function imageToDataUrl(url: string): Promise<string | null> {
   try {
@@ -33,18 +33,16 @@ async function imageToDataUrl(url: string): Promise<string | null> {
   }
 }
 
-interface OptimizeOptions {
-  imageUrl?: string;
-}
-
 export function usePromptOptimizer() {
   const [optimizing, setOptimizing] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const describeImage = useCallback(
     async (cfg: LLMConfig, imageDataUrl: string): Promise<string | null> => {
       const res = await llmClient.chat(cfg, buildDescribeMessages(imageDataUrl), {
         temperature: 0.3,
+        max_tokens: 1500,
       });
       if (!res.ok) {
         setError(res.error.message);
@@ -56,13 +54,39 @@ export function usePromptOptimizer() {
     []
   );
 
+  const describeReference = useCallback(
+    async (imageUrl: string): Promise<string | null> => {
+      const { llmBaseUrl, llmModel, llmApiKey } = useSettingsStore.getState();
+      if (!llmBaseUrl || !llmModel) {
+        setError('尚未設定 LLM 位址或模型，請先到「設定」完成配置');
+        return null;
+      }
+      const cfg: LLMConfig = { baseUrl: llmBaseUrl, model: llmModel, apiKey: llmApiKey };
+      setDescribing(true);
+      setError(null);
+      try {
+        const dataUrl = await imageToDataUrl(imageUrl);
+        if (!dataUrl) {
+          setError('無法讀取參考圖片');
+          return null;
+        }
+        toast({ title: '正在分析圖片', description: '反推圖片內容…' });
+        const description = await describeImage(cfg, dataUrl);
+        if (!description) {
+          setError('無法分析圖片，模型可能不支援視覺輸入');
+          return null;
+        }
+        return description;
+      } finally {
+        setDescribing(false);
+      }
+    },
+    [describeImage]
+  );
+
   const optimize = useCallback(
-    async (
-      input: string,
-      negativeInput?: string,
-      opts?: OptimizeOptions
-    ): Promise<OptimizedPrompt | null> => {
-      if (!input.trim() && !opts?.imageUrl) {
+    async (input: string, negativeInput?: string): Promise<OptimizedPrompt | null> => {
+      if (!input.trim()) {
         setError('請先輸入提示詞再優化');
         return null;
       }
@@ -77,30 +101,8 @@ export function usePromptOptimizer() {
       setOptimizing(true);
       setError(null);
       try {
-        let imageDescription: string | null = null;
-        if (opts?.imageUrl) {
-          const dataUrl = await imageToDataUrl(opts.imageUrl);
-          if (dataUrl) {
-            toast({ title: '正在分析圖片', description: '先反推圖片內容…' });
-            imageDescription = await describeImage(cfg, dataUrl);
-            if (!imageDescription) {
-              toast({
-                variant: 'destructive',
-                title: '無法分析圖片',
-                description: '模型可能不支援視覺輸入，將改用純文字提示詞優化',
-              });
-            }
-          } else {
-            toast({
-              variant: 'destructive',
-              title: '無法讀取參考圖片',
-              description: '將改用純文字提示詞優化',
-            });
-          }
-        }
-
-        const messages = buildOptimizeMessages(input, negativeInput, imageDescription ?? undefined);
-        const res = await llmClient.chat(cfg, messages);
+        const messages = buildOptimizeMessages(input, negativeInput);
+        const res = await llmClient.chat(cfg, messages, { max_tokens: 2000 });
 
         if (!res.ok) {
           setError(res.error.message);
@@ -124,8 +126,8 @@ export function usePromptOptimizer() {
         setOptimizing(false);
       }
     },
-    [describeImage]
+    []
   );
 
-  return { optimizing, error, optimize };
+  return { optimizing, describing, error, describeReference, optimize };
 }

@@ -6,7 +6,7 @@ export function defaultParams(mode: Mode): GenerationParams {
     prompt: '',
     negativePrompt: '',
     mode,
-    seed: Math.floor(Math.random() * 1_000_000_000),
+    seed: -1,
     width: 1024,
     height: 1024,
     steps: 8,

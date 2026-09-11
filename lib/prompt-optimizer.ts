@@ -36,7 +36,7 @@ export function buildOptimizeMessages(
   ];
 }
 
-export const DESCRIBE_SYSTEM_PROMPT = `你是專業的圖片內容分析師。仔細觀察使用者提供的圖片，用英文寫一段連貫的描述，涵蓋主體、動作、構圖、光線、色調、材質、背景與風格，供 AI 繪圖使用。只輸出描述本身的文字，不要加引言、前言或任何標記。`;
+export const DESCRIBE_SYSTEM_PROMPT = `你是圖片內容分析師。觀察使用者提供的圖片，用英文寫一段**簡潔**的描述（約 50-100 字，一句或兩句），重點是：主要主體與其動作、構圖（遠景/特寫/角度）、光線與色調、材質與氛圍、明確的風格特徵。這些文字要能直接當提示詞使用。不要引言、前言、標記或翻譯，只輸出描述本身。`;
 
 export function buildDescribeMessages(imageDataUrl: string): ChatMessage[] {
   return [

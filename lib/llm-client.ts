@@ -25,6 +25,7 @@ export interface LLMConfig {
 
 export interface ChatCompletionOptions {
   temperature?: number;
+  max_tokens?: number;
 }
 
 type LLMApiResult<T> = { ok: true; data: T } | { ok: false; error: ErrorResult };
@@ -96,7 +97,12 @@ export const llmClient = {
     return request<ChatCompletionResponse>(cfg, {
       method: 'POST',
       path: 'chat/completions',
-      body: JSON.stringify({ model: cfg.model, messages, temperature: opts?.temperature ?? 0.7 }),
+      body: JSON.stringify({
+        model: cfg.model,
+        messages,
+        temperature: opts?.temperature ?? 0.7,
+        ...(opts?.max_tokens ? { max_tokens: opts.max_tokens } : {}),
+      }),
     });
   },
 

@@ -9,6 +9,10 @@ export interface WorkflowTemplate {
 
 const PREFIX = 'SuperStudio';
 
+export function resolveSeed(seed: number): number {
+  return Number.isFinite(seed) && seed >= 0 ? Math.floor(seed) : Math.floor(Math.random() * 1_000_000_000);
+}
+
 export function frameCountForDuration(seconds: number): number {
   const desired = Math.max(5, Math.round(seconds * 24));
   const k = Math.max(0, Math.ceil((desired - 5) / 17));
@@ -122,7 +126,7 @@ function buildVideoWorkflow(params: GenerationParams, withFrames: boolean): Reco
     class_type: 'KSampler',
     inputs: {
       model: modelRef,
-      seed: params.seed,
+      seed: resolveSeed(params.seed),
       steps,
       cfg: 1,
       sampler_name: 'res_multistep',
@@ -154,7 +158,7 @@ export function buildText2Img(params: GenerationParams): Record<string, Workflow
         positive: ['27', 0],
         sampler_name: 'res_multistep',
         scheduler: 'simple',
-        seed: params.seed,
+        seed: resolveSeed(params.seed),
         steps: params.steps,
       },
     },
@@ -242,7 +246,7 @@ export function buildImg2Img(params: GenerationParams): Record<string, WorkflowN
         positive: ['27', 0],
         sampler_name: 'res_multistep',
         scheduler: 'simple',
-        seed: params.seed,
+        seed: resolveSeed(params.seed),
         steps: params.steps,
       },
     },
@@ -409,7 +413,7 @@ export function buildVidUpscale(params: GenerationParams): Record<string, Workfl
       class_type: 'KSampler',
       inputs: {
         model: ['4', 0],
-        seed: params.seed,
+        seed: resolveSeed(params.seed),
         steps,
         cfg: 1,
         sampler_name: 'euler',

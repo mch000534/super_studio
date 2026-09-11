@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronRight, Image as ImageIcon, Loader2, Sparkles } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ export function PromptPanel({ showNegative = true, placeholder }: PromptPanelPro
   const params = useGenerationStore((s) => s.params);
   const updateParams = useGenerationStore((s) => s.updateParams);
   const { comfyuiHost, authHeader } = useSettingsStore();
-  const { optimizing, optimize } = usePromptOptimizer();
+  const { optimizing, describing, describeReference, optimize } = usePromptOptimizer();
   const [showNegativePanel, setShowNegativePanel] = useState(showNegative && !!params.negativePrompt);
 
   const referenceImageUrl =
@@ -28,12 +28,22 @@ export function PromptPanel({ showNegative = true, placeholder }: PromptPanelPro
       ? comfyuiClient.getViewUrl(params.imageName, comfyuiHost, '', 'input', { authHeader })
       : undefined;
 
+  const busy = optimizing || describing;
+
+  const handleDescribe = async () => {
+    if (!referenceImageUrl) return;
+    const description = await describeReference(referenceImageUrl);
+    if (!description) {
+      toast({ variant: 'destructive', title: '反推失敗', description: '請檢查 LLM 設定與參考圖片' });
+      return;
+    }
+    updateParams({ prompt: description });
+    setShowNegativePanel(true);
+    toast({ title: '反推完成', description: '已將圖片內容描述填入正向提示詞' });
+  };
+
   const handleOptimize = async () => {
-    const result = await optimize(
-      params.prompt,
-      params.negativePrompt,
-      referenceImageUrl ? { imageUrl: referenceImageUrl } : undefined
-    );
+    const result = await optimize(params.prompt, params.negativePrompt);
     if (!result) {
       toast({ variant: 'destructive', title: '優化失敗', description: '請檢查 LLM 設定' });
       setShowNegativePanel(true);
@@ -41,12 +51,7 @@ export function PromptPanel({ showNegative = true, placeholder }: PromptPanelPro
     }
     updateParams({ prompt: result.positive, negativePrompt: result.negative });
     setShowNegativePanel(true);
-    toast({
-      title: '優化完成',
-      description: referenceImageUrl
-        ? '已反推圖片並回填優化後的正向與負向提示詞'
-        : '已回填優化後的正向與負向提示詞',
-    });
+    toast({ title: '優化完成', description: '已回填優化後的正向與負向提示詞' });
   };
 
   return (
@@ -54,20 +59,41 @@ export function PromptPanel({ showNegative = true, placeholder }: PromptPanelPro
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <Label>提示詞</Label>
-          <Button
-            onClick={handleOptimize}
-            disabled={optimizing || (!params.prompt.trim() && !referenceImageUrl)}
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1 px-2 text-xs"
-          >
-            {optimizing ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Sparkles className="h-3 w-3" />
-            )}
-            {referenceImageUrl ? '反推圖片並優化' : '優化提示詞'}
-          </Button>
+          {referenceImageUrl ? (
+            <div className="flex items-center gap-1.5">
+              <Button
+                onClick={handleDescribe}
+                disabled={busy}
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+              >
+                {describing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageIcon className="h-3 w-3" />}
+                反推圖片
+              </Button>
+              <Button
+                onClick={handleOptimize}
+                disabled={busy || !params.prompt.trim()}
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+              >
+                {optimizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                優化提示詞
+              </Button>
+            </div>
+          ) : (
+            <Button
+              onClick={handleOptimize}
+              disabled={busy || !params.prompt.trim()}
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+            >
+              {optimizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              優化提示詞
+            </Button>
+          )}
         </div>
         <Textarea
           value={params.prompt}

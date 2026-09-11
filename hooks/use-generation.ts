@@ -369,6 +369,11 @@ export function useGeneration() {
         return;
       }
 
+      if (['img2img', 'img_upscale', 'vid_upscale'].includes(mode) && !params.imageName) {
+        g.setError('尚未選擇參考影像，無法生成');
+        return;
+      }
+
       g.resetGeneration();
       useQueueStore.getState().addTask(params);
 
@@ -437,10 +442,12 @@ export function useGeneration() {
 
 function resolveError(message: string, nodeErrors?: Record<string, unknown>): string {
   if (!nodeErrors) return message;
-  const nodes = Object.values(nodeErrors) as Array<{ errors?: Array<{ message?: string }> }>;
+  const nodes = Object.values(nodeErrors) as Array<{
+    errors?: Array<{ message?: string; details?: string }>;
+  }>;
   if (nodes.length === 0) return message;
   const details = nodes
-    .map((n) => n.errors?.map((e) => e.message).join('; '))
+    .map((n) => n.errors?.map((e) => e.details || e.message).join('; '))
     .filter(Boolean)
     .join(' | ');
   return details ? `${message}: ${details}` : message;

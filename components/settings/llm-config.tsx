@@ -172,7 +172,7 @@ export function LlmConfig() {
           value={modelDraft}
           onValueChange={setModelDraft}
           items={modelOptions}
-          placeholder="qwen3-vl:8b"
+          placeholder="qwen3-vl:4b"
         />
       </div>
 

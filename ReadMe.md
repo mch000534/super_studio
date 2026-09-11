@@ -70,7 +70,7 @@ npm run dev          # 開發模式（預設 http://localhost:3000）
 
 提示詞面板的「優化提示詞／反推圖片並優化」按鈕需要一支 OpenAI 相容 API（內建支援 Ollama `:11434/v1`），於設定頁「LLM」區塊填寫：
 - Base URL（預設 `http://<本機 IP>:11434/v1`）
-- 模型名稱（預設 `qwen3-vl:8b`，需支援多模態才能「反推圖片」）
+- 模型名稱（預設 `qwen3-vl:4b`，需支援多模態才能「反推圖片」）
 - API Key（若需要）
 
 > LLM 連線同樣經同源代理 `/api/llm/*`（`X-LLM-BaseURL`/`X-LLM-Model`/`X-LLM-ApiKey` header），不直接外連。

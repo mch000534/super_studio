@@ -40,13 +40,22 @@ async function request<T>(
     } catch {
       // ignore
     }
-    const errData = (data as { error?: ErrorResult }) || {};
-    return {
-      ok: false,
-      error:
-        errData.error ||
-        makeError(`http_${res.status}`, `請求失敗 (${res.status}): ${res.statusText}`),
+    const errData = (data as { error?: ErrorResult; node_errors?: Record<string, unknown> }) || {};
+    const result = {
+      ok: false as const,
+      error: {
+        ...(errData.error || makeError(`http_${res.status}`, `請求失敗 (${res.status}): ${res.statusText}`)),
+        nodeErrors: errData.node_errors,
+      },
     };
+    if (process.env.NODE_ENV !== 'production') {
+      console.error(`[comfyui:${path}]`, result.error.message);
+      console.error(
+        `[comfyui:${path}::nodeErrors]`,
+        JSON.stringify(result.error.nodeErrors ?? null, null, 2)
+      );
+    }
+    return result;
   }
 
   try {

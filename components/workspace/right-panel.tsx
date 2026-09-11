@@ -189,7 +189,14 @@ function Img2ImgControls({ onInterrupt }: { onInterrupt: () => void }) {
       </div>
       <ParameterControls />
       <Separator />
-      <GenerationControls onGenerate={() => submit()} onInterrupt={onInterrupt} />
+      <GenerationControls
+        onGenerate={() => submit()}
+        onInterrupt={onInterrupt}
+        disabled={!params.imageName}
+      />
+      {!params.imageName && (
+        <p className="text-xs text-muted-foreground">請先上傳或從畫廊拖曳參考影像再生成</p>
+      )}
     </div>
   );
 }
