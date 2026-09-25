@@ -59,6 +59,9 @@ export interface GenerationParams {
 
   // custom workflow support
   customWorkflow?: Record<string, unknown>;
+
+  // image model family (text2img)
+  imageModelId?: string;
 }
 
 export type GenerationStatus =

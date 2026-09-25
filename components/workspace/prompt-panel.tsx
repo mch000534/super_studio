@@ -122,7 +122,7 @@ export function PromptPanel({ showNegative = true, placeholder }: PromptPanelPro
               <Textarea
                 value={params.negativePrompt || ''}
                 onChange={(e) => updateParams({ negativePrompt: e.target.value })}
-                placeholder="不希望出現的內容（Z-Image-Turbo 通常可留空）"
+                placeholder="不希望出現的內容（通常可留空）"
                 rows={2}
                 className="resize-none text-xs"
               />

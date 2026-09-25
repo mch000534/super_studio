@@ -5,9 +5,9 @@ import { useCallback, useEffect } from 'react';
 import { PromptPanel } from '@/components/workspace/prompt-panel';
 import { ParameterControls } from '@/components/workspace/parameter-controls';
 import { GenerationControls } from '@/components/workspace/generation-controls';
+import { ImageModelSelector } from '@/components/workspace/image-model-selector';
 import { VideoControls } from '@/components/workspace/video-controls';
 import { ImageUpload } from '@/components/workspace/image-upload';
-import { ModelSelector } from '@/components/workspace/model-selector';
 import { UpscaleControls } from '@/components/workspace/upscale-controls';
 import { CustomWorkflowPanel } from '@/components/workflow/custom-workflow-panel';
 import { Slider } from '@/components/ui/slider';
@@ -100,7 +100,7 @@ function PanelContent({
       return (
         <div className="space-y-5">
           <PromptPanel />
-          <ModelSelector mode={mode} />
+          <ImageModelSelector />
           <Separator />
           <ParameterControls />
           <Separator />

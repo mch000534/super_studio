@@ -1,5 +1,6 @@
 import type { GenerationParams, Mode } from '@/types/workflow';
 import type { WorkflowNode } from '@/types/comfyui';
+import { getImageModelFamily } from '@/lib/image-models';
 
 export interface WorkflowTemplate {
   name: string;
@@ -142,7 +143,25 @@ function buildVideoWorkflow(params: GenerationParams, withFrames: boolean): Reco
   return nodes;
 }
 
+function withFamilyModels(params: GenerationParams): GenerationParams {
+  const family = getImageModelFamily(params.imageModelId);
+  return {
+    ...params,
+    unetName: family.defaults.unetName,
+    clipName: family.defaults.clipName,
+    vaeName: family.defaults.vaeName,
+  };
+}
+
 export function buildText2Img(params: GenerationParams): Record<string, WorkflowNode> {
+  const familyParams = withFamilyModels(params);
+  if (getImageModelFamily(params.imageModelId).kind === 'qwen-image-2.1') {
+    return buildQwenImage21T2i(familyParams);
+  }
+  return buildZImageT2i(familyParams);
+}
+
+export function buildZImageT2i(params: GenerationParams): Record<string, WorkflowNode> {
   const width = Math.min(4096, Math.max(64, Math.round(params.width / 32) * 32));
   const height = Math.min(4096, Math.max(64, Math.round(params.height / 32) * 32));
 
@@ -285,6 +304,75 @@ export function buildImg2Img(params: GenerationParams): Record<string, WorkflowN
       class_type: 'SaveImage',
       inputs: { filename_prefix: `${PREFIX}-img2img`, images: ['8', 0] },
     },
+  };
+}
+
+export function buildQwenImage21T2i(params: GenerationParams): Record<string, WorkflowNode> {
+  const width = Math.min(4096, Math.max(64, Math.round(params.width / 32) * 32));
+  const height = Math.min(4096, Math.max(64, Math.round(params.height / 32) * 32));
+
+  return {
+    '451': {
+      class_type: 'UNETLoader',
+      inputs: {
+        unet_name: params.unetName || 'qwen_image_2.1_int8_convrot.safetensors',
+        weight_dtype: 'default',
+      },
+    } as WorkflowNode,
+    '452': {
+      class_type: 'TextEncodeQwenImage21',
+      inputs: {
+        clip: ['453', 0],
+        prompt: params.prompt,
+        negative_prompt: params.negativePrompt || '',
+        resolution: width,
+      },
+    } as WorkflowNode,
+    '453': {
+      class_type: 'CLIPLoader',
+      inputs: {
+        clip_name: params.clipName || 'qwen3vl_8b_int8_convrot.safetensors',
+        type: 'qwen_image',
+        device: 'default',
+      },
+    } as WorkflowNode,
+    '454': {
+      class_type: 'VAELoader',
+      inputs: {
+        vae_name: params.vaeName || 'qwen_image_2.1_vae_bf16.safetensors',
+      },
+    } as WorkflowNode,
+    '456': {
+      class_type: 'EmptyLatentImage',
+      inputs: {
+        width,
+        height,
+        batch_size: params.batch,
+      },
+    } as WorkflowNode,
+    '458': {
+      class_type: 'KSampler',
+      inputs: {
+        model: ['451', 0],
+        seed: resolveSeed(params.seed),
+        steps: params.steps,
+        cfg: params.cfg ?? 1,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        positive: ['452', 0],
+        negative: ['452', 1],
+        latent_image: ['456', 0],
+        denoise: 1,
+      },
+    } as WorkflowNode,
+    '457': {
+      class_type: 'VAEDecode',
+      inputs: { samples: ['458', 0], vae: ['454', 0] },
+    } as WorkflowNode,
+    '461': {
+      class_type: 'SaveImage',
+      inputs: { filename_prefix: `${PREFIX}-qwen_image_2.1`, images: ['457', 0] },
+    } as WorkflowNode,
   };
 }
 
@@ -469,7 +557,7 @@ export function buildCustom(params: GenerationParams): Record<string, WorkflowNo
 }
 
 const templates: Record<Mode, WorkflowTemplate> = {
-  text2img: { name: 'Z-Image-Turbo', mode: 'text2img', build: buildText2Img },
+  text2img: { name: 'Text to Image', mode: 'text2img', build: buildText2Img },
   img2img: { name: 'Z-Image-Turbo (Img2Img)', mode: 'img2img', build: buildImg2Img },
   text2vid: { name: 'MiniMax H3', mode: 'text2vid', build: buildText2Vid },
   img2vid: { name: 'MiniMax H3 (Img2Vid)', mode: 'img2vid', build: buildImg2Vid },

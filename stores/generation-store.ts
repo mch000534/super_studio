@@ -12,6 +12,7 @@ export function defaultParams(mode: Mode): GenerationParams {
     steps: 8,
     cfg: 1,
     batch: 1,
+    imageModelId: 'z-image',
   };
   return { ...base };
 }

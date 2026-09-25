@@ -145,15 +145,23 @@ export const comfyuiClient = {
     host: string,
     authHeader?: string
   ): Promise<ApiResult<ModelFolderItem[]>> {
-    const res = await request<{ [key: string]: unknown }>(`models/${folder}`, {
-      host,
-      authHeader,
-    });
-    if (res.ok) {
-      const keys = Object.keys(res.data);
-      return { ok: true, data: keys.map((name) => ({ name })) };
+    const res = await request<unknown>(`models/${folder}`, { host, authHeader });
+    if (!res.ok) return res;
+
+    const raw = res.data;
+    const names: string[] = [];
+    if (Array.isArray(raw)) {
+      for (const item of raw) {
+        if (typeof item === 'string') names.push(item);
+        else if (item && typeof item === 'object' && typeof (item as { name?: unknown }).name === 'string') {
+          names.push((item as { name: string }).name);
+        }
+      }
+    } else if (raw && typeof raw === 'object') {
+      names.push(...Object.keys(raw));
     }
-    return res;
+
+    return { ok: true, data: names.map((name) => ({ name })) };
   },
 
   getViewUrl(

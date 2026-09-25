@@ -28,6 +28,8 @@ const NODE_NAMES: Record<string, string> = {
   UNETLoader: '載入主模型',
   CLIPLoader: '載入文字編碼器',
   VAELoader: '載入 VAE',
+  TextEncodeQwenImage21: 'Qwen-Image-2.1 提示詞編碼',
+  EmptyLatentImage: '初始化潛在空間',
 };
 
 function nodeName(nodeId: string): string {
