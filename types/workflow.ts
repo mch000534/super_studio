@@ -1,6 +1,7 @@
 export type Mode =
   | 'text2img'
   | 'img2img'
+  | 'img_edit'
   | 'text2vid'
   | 'img2vid'
   | 'img_upscale'
@@ -38,6 +39,10 @@ export interface GenerationParams {
   // img2img
   denoise?: number;
   imageName?: string;
+
+  // qwen-image-2.1 image edit
+  refImages?: string[];
+  resolution?: number;
 
   // video
   duration?: number;

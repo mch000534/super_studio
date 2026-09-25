@@ -9,6 +9,11 @@ export interface ModeMeta {
 export const MODES: ModeMeta[] = [
   { id: 'text2img', label: '文生圖', description: '以文字提示詞生成圖片（z-image / Qwen-Image-2.1）' },
   { id: 'img2img', label: 'z-image_i2i', description: '以圖片為參考生成新圖片' },
+  {
+    id: 'img_edit',
+    label: '圖片編輯',
+    description: '上傳最多 10 張參考圖，以文字指令編輯（image1 為編輯目標；支援 <image1>、<image2>… 引用）',
+  },
   { id: 'text2vid', label: '文生影片', description: '以文字提示詞生成影片' },
   { id: 'img2vid', label: '圖生影片', description: '以首幀圖片生成影片' },
   { id: 'img_upscale', label: '圖片放大', description: '放大圖片解析度' },

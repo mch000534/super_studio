@@ -29,6 +29,7 @@ const NODE_NAMES: Record<string, string> = {
   CLIPLoader: '載入文字編碼器',
   VAELoader: '載入 VAE',
   TextEncodeQwenImage21: 'Qwen-Image-2.1 提示詞編碼',
+  QwenImage21Cache: 'Qwen-Image-2.1 快取',
   EmptyLatentImage: '初始化潛在空間',
 };
 
@@ -373,6 +374,11 @@ export function useGeneration() {
 
       if (['img2img', 'img_upscale', 'vid_upscale'].includes(mode) && !params.imageName) {
         g.setError('尚未選擇參考影像，無法生成');
+        return;
+      }
+
+      if (mode === 'img_edit' && !(params.refImages?.length ?? 0)) {
+        g.setError('尚未選擇參考圖片，無法編輯');
         return;
       }
 

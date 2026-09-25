@@ -14,9 +14,10 @@ import { toast } from '@/hooks/use-toast';
 interface PromptPanelProps {
   showNegative?: boolean;
   placeholder?: string;
+  textareaRef?: React.RefObject<HTMLTextAreaElement>;
 }
 
-export function PromptPanel({ showNegative = true, placeholder }: PromptPanelProps) {
+export function PromptPanel({ showNegative = true, placeholder, textareaRef }: PromptPanelProps) {
   const params = useGenerationStore((s) => s.params);
   const updateParams = useGenerationStore((s) => s.updateParams);
   const { comfyuiHost, authHeader } = useSettingsStore();
@@ -96,6 +97,7 @@ export function PromptPanel({ showNegative = true, placeholder }: PromptPanelPro
           )}
         </div>
         <Textarea
+          ref={textareaRef}
           value={params.prompt}
           onChange={(e) => updateParams({ prompt: e.target.value })}
           placeholder={placeholder || '描述你想要的影像…'}

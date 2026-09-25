@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 import { PromptPanel } from '@/components/workspace/prompt-panel';
 import { ParameterControls } from '@/components/workspace/parameter-controls';
@@ -8,6 +8,8 @@ import { GenerationControls } from '@/components/workspace/generation-controls';
 import { ImageModelSelector } from '@/components/workspace/image-model-selector';
 import { VideoControls } from '@/components/workspace/video-controls';
 import { ImageUpload } from '@/components/workspace/image-upload';
+import { ReferenceImagesUpload } from '@/components/workspace/reference-images-upload';
+import { EditControls } from '@/components/workspace/edit-controls';
 import { UpscaleControls } from '@/components/workspace/upscale-controls';
 import { CustomWorkflowPanel } from '@/components/workflow/custom-workflow-panel';
 import { Slider } from '@/components/ui/slider';
@@ -109,6 +111,8 @@ function PanelContent({
       );
     case 'img2img':
       return <Img2ImgControls onInterrupt={onInterrupt} />;
+    case 'img_edit':
+      return <ImgEditControls onInterrupt={onInterrupt} />;
     case 'text2vid':
       return (
         <div className="space-y-5">
@@ -196,6 +200,87 @@ function Img2ImgControls({ onInterrupt }: { onInterrupt: () => void }) {
       />
       {!params.imageName && (
         <p className="text-xs text-muted-foreground">請先上傳或從畫廊拖曳參考影像再生成</p>
+      )}
+    </div>
+  );
+}
+
+function ImgEditControls({ onInterrupt }: { onInterrupt: () => void }) {
+  const { comfyuiHost, authHeader } = useSettingsStore();
+  const params = useGenerationStore((s) => s.params);
+  const updateParams = useGenerationStore((s) => s.updateParams);
+  const { submit } = useGeneration();
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const refImages = params.refImages ?? [];
+
+  const insertRefToken = (index: number) => {
+    const token = `<image${index + 1}>`;
+    const ta = promptTextareaRef.current;
+    const current = params.prompt || '';
+    if (ta) {
+      const start = ta.selectionStart ?? current.length;
+      const end = ta.selectionEnd ?? start;
+      const next = current.slice(0, start) + token + current.slice(end);
+      updateParams({ prompt: next });
+      requestAnimationFrame(() => {
+        const pos = start + token.length;
+        ta.focus();
+        ta.setSelectionRange(pos, pos);
+      });
+    } else {
+      updateParams({ prompt: current ? `${current} ${token}` : token });
+    }
+  };
+
+  const handleUpload = async (file: File) => {
+    const r = await comfyuiClient.uploadImage(file, comfyuiHost, authHeader);
+    if (r.ok) return r.data.name;
+    throw new Error(r.error.message);
+  };
+
+  const handleGalleryPick = async (item: MediaItem) => {
+    if (item.kind !== 'image') throw new Error('僅支援圖片作為參考');
+    const r = await ensureInputRef(item, comfyuiHost, authHeader);
+    if (!r.ok) {
+      toast({ variant: 'destructive', title: '選取失敗', description: r.message });
+      throw new Error(r.message);
+    }
+    return r.name;
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-1.5">
+        <ReferenceImagesUpload
+          values={refImages}
+          onChange={(v) => updateParams({ refImages: v })}
+          onUpload={handleUpload}
+          onGalleryPick={handleGalleryPick}
+          onTileClick={insertRefToken}
+          max={10}
+        />
+        <p className="text-xs text-muted-foreground">
+          可從上方畫廊拖曳圖片至此。第 1 張（image1）為編輯目標，其餘為參考素材；提示詞中用{' '}
+          <code className="font-mono text-[10px]">&lt;image1&gt;</code>、{' '}
+          <code className="font-mono text-[10px]">&lt;image2&gt;</code>… 引用。
+        </p>
+      </div>
+      <PromptPanel
+        placeholder="輸入編輯指令（引用上方參考圖的位置）…"
+        textareaRef={promptTextareaRef}
+      />
+      <Separator />
+      <EditControls />
+      <Separator />
+      <GenerationControls
+        onGenerate={() => submit()}
+        onInterrupt={onInterrupt}
+        label="編輯圖片"
+        disabled={refImages.length === 0}
+      />
+      {refImages.length === 0 && (
+        <p className="text-xs text-muted-foreground">請先上傳或拖曳至少 1 張編輯目標圖片</p>
       )}
     </div>
   );

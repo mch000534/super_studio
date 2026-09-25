@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Image as ImageIcon, Images, Clapperboard, Film, ZoomIn, ScanLine, Braces, ListTodo } from 'lucide-react';
+import { Image as ImageIcon, Images, Wand2, Clapperboard, Film, ZoomIn, ScanLine, Braces, ListTodo } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MODES } from '@/lib/modes';
 import { useSettingsStore } from '@/stores/settings-store';
@@ -11,6 +11,7 @@ import { useQueueStore, queuePendingCount } from '@/stores/queue-store';
 const ICONS: Record<Mode, React.ComponentType<{ className?: string }>> = {
   text2img: ImageIcon,
   img2img: Images,
+  img_edit: Wand2,
   text2vid: Clapperboard,
   img2vid: Film,
   img_upscale: ZoomIn,

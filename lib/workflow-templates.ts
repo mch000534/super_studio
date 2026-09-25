@@ -376,6 +376,93 @@ export function buildQwenImage21T2i(params: GenerationParams): Record<string, Wo
   };
 }
 
+export function buildQwenImage21Edit(params: GenerationParams): Record<string, WorkflowNode> {
+  const familyParams = withFamilyModels({ ...params, imageModelId: 'qwen-image-2.1' });
+  const refs = (params.refImages ?? []).filter(Boolean).slice(0, 10);
+
+  const teInputs: Record<string, unknown> = {
+    clip: ['453', 0],
+    prompt: params.prompt,
+    negative_prompt: params.negativePrompt || '',
+    vae: ['454', 0],
+    resolution: params.resolution ?? 1024,
+  };
+
+  const nodes: Record<string, WorkflowNode> = {
+    '451': {
+      class_type: 'UNETLoader',
+      inputs: {
+        unet_name: familyParams.unetName || 'qwen_image_2.1_int8_convrot.safetensors',
+        weight_dtype: 'default',
+      },
+    } as WorkflowNode,
+    '453': {
+      class_type: 'CLIPLoader',
+      inputs: {
+        clip_name: familyParams.clipName || 'qwen3vl_8b_int8_convrot.safetensors',
+        type: 'qwen_image',
+        device: 'default',
+      },
+    } as WorkflowNode,
+    '454': {
+      class_type: 'VAELoader',
+      inputs: {
+        vae_name: familyParams.vaeName || 'qwen_image_2.1_vae_bf16.safetensors',
+      },
+    } as WorkflowNode,
+    '469': {
+      class_type: 'QwenImage21Cache',
+      inputs: {
+        model: ['451', 0],
+        device: 'auto',
+        dtype: 'default',
+      },
+    } as WorkflowNode,
+  };
+
+  refs.forEach((name, idx) => {
+    const loadId = String(470 + idx);
+    nodes[loadId] = {
+      class_type: 'LoadImage',
+      inputs: { image: name },
+    } as WorkflowNode;
+    teInputs[`images.image_${idx + 1}`] = [loadId, 0];
+  });
+
+  nodes['474'] = {
+    class_type: 'TextEncodeQwenImage21',
+    inputs: teInputs,
+  } as WorkflowNode;
+
+  nodes['458'] = {
+    class_type: 'KSampler',
+    inputs: {
+      model: ['469', 0],
+      seed: resolveSeed(params.seed),
+      steps: params.steps,
+      cfg: params.cfg ?? 1,
+      sampler_name: 'euler',
+      scheduler: 'simple',
+      positive: ['474', 0],
+      negative: ['474', 1],
+      latent_image: ['474', 2],
+      denoise: 1,
+    },
+  } as WorkflowNode;
+
+  nodes['457'] = {
+    class_type: 'VAEDecode',
+    inputs: { samples: ['458', 0], vae: ['454', 0] },
+  } as WorkflowNode;
+
+  nodes['461'] = {
+    class_type: 'SaveImage',
+    inputs: { filename_prefix: `${PREFIX}-qwen21-edit`, images: ['457', 0] },
+  } as WorkflowNode;
+
+  return nodes;
+}
+
 export function buildText2Vid(params: GenerationParams): Record<string, WorkflowNode> {
   return buildVideoWorkflow(params, false);
 }
@@ -559,6 +646,7 @@ export function buildCustom(params: GenerationParams): Record<string, WorkflowNo
 const templates: Record<Mode, WorkflowTemplate> = {
   text2img: { name: 'Text to Image', mode: 'text2img', build: buildText2Img },
   img2img: { name: 'Z-Image-Turbo (Img2Img)', mode: 'img2img', build: buildImg2Img },
+  img_edit: { name: 'Qwen-Image-2.1 (Image Edit)', mode: 'img_edit', build: buildQwenImage21Edit },
   text2vid: { name: 'MiniMax H3', mode: 'text2vid', build: buildText2Vid },
   img2vid: { name: 'MiniMax H3 (Img2Vid)', mode: 'img2vid', build: buildImg2Vid },
   img_upscale: { name: 'RealESRGAN', mode: 'img_upscale', build: buildImgUpscale },
