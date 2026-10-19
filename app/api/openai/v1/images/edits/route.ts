@@ -29,6 +29,9 @@ export function OPTIONS() {
  * form: image[]（必填，可多張）、prompt（必填）、model?、n?、size?、
  *       response_format?、denoise?、seed?、steps?、cfg?、negative_prompt?
  *
+ * response_format 預設為 b64_json（與 OpenAI 官方 edits 一致；亦相容
+ * Cherry Studio 等只接受 b64_json 的客戶端），可明確傳 url 改回 URL 回傳。
+ *
  * 模型對應：
  * - qwen-image-2.1：多參考圖指令編輯（image1 為編輯目標，prompt 可用
  *   <image1>、<image2>… 引用）
@@ -67,7 +70,10 @@ export async function POST(req: NextRequest) {
     const model = resolveModel(formString('model'));
     const batch = parseBatch(form.get('n'));
     const { width, height } = parseSize(formString('size'));
-    const responseFormat = parseResponseFormat(form.get('response_format'));
+    // edits 預設回 b64_json：OpenAI 官方 images/edits（gpt-image 系列）固定回
+    // base64，許多客戶端（如 Cherry Studio / @ai-sdk/openai-compatible）的
+    // zod schema 也只接受 b64_json，收到 url 會判定「No image generated」。
+    const responseFormat = parseResponseFormat(form.get('response_format'), 'b64_json');
     const defaults = recommendedParams(model);
 
     const denoise = optionalNumber(form.get('denoise'), 'denoise');

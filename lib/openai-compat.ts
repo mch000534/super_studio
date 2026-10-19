@@ -120,8 +120,12 @@ export function parseBatch(n: unknown): number {
   return value;
 }
 
-export function parseResponseFormat(value: unknown): 'url' | 'b64_json' {
-  if (value === undefined || value === null || value === 'url') return 'url';
+export function parseResponseFormat(
+  value: unknown,
+  fallback: 'url' | 'b64_json' = 'url'
+): 'url' | 'b64_json' {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (value === 'url') return 'url';
   if (value === 'b64_json') return 'b64_json';
   throw new OpenAICompatError('response_format 僅支援 url 或 b64_json');
 }

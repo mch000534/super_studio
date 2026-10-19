@@ -49,6 +49,6 @@
     "typescript-eslint": "8.50.0",
     "@typescript-eslint/eslint-plugin": "8.50.0",
     "@typescript-eslint/parser": "8.50.0",
-    "dompurify": "3.4.15"
+    "dompurify": "^3.4.17"
   }
 }

@@ -111,7 +111,7 @@ curl -X POST http://<host>:3000/api/openai/v1/images/edits \
 ```
 
 - 請求欄位：`model`、`prompt`、`n`（1–4）、`size`（`寬x高`，64–4096）、`response_format`（`url` 或 `b64_json`），擴充欄位 `seed`、`steps`、`cfg`、`negative_prompt`、`denoise`（edits）。
-- 回傳標準 OpenAI 格式 `{ created, data: [{ url | b64_json }] }`；`url` 經同源 view 代理，需呼叫端可達 Super Studio 位址。
+- 回傳標準 OpenAI 格式 `{ created, data: [{ url | b64_json }] }`；generations 預設回 `url`，**edits 預設回 `b64_json`**（與 OpenAI 官方 edits 一致，Cherry Studio 等只接受 base64 的客戶端才能正常解析）；`url` 經同源 view 代理，需呼叫端可達 Super Studio 位址。
 - ComfyUI 位址解析：`X-ComfyUI-Host` header → `COMFYUI_HOST` 環境變數 → 預設值；認證為 `X-ComfyUI-Auth` header → `COMFYUI_AUTH` 環境變數。
 - 逾時預設 600 秒，可用 `OPENAI_COMPAT_TIMEOUT_MS` 環境變數調整。
 - 端點預設無驗證（適合內網）；若要公開暴露，請在前方加反向代理與驗證。
