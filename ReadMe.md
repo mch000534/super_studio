@@ -89,6 +89,34 @@ npm run dev          # 開發模式（預設 http://localhost:3000）
 | 影片放大 | 來源影片（SeedVR2 工作流） |
 | 自定義 | 上傳 API/UI-format JSON 或從模板開始 |
 
+## OpenAI API 相容層（給外部工具使用）
+
+把 ComfyUI 的生圖能力包成 OpenAI Images API 格式，任何支援「自訂 OpenAI 相容端點」的工具（ComfyUI 以外的繪圖工具、腳本、LLM Agent 等）都能直接呼叫：
+
+| 端點 | 說明 |
+|------|------|
+| `GET /api/openai/v1/models` | 列出可用模型（`z-image`、`qwen-image-2.1`） |
+| `POST /api/openai/v1/images/generations` | 文生圖（JSON body） |
+| `POST /api/openai/v1/images/edits` | 圖生圖／圖片編輯（multipart form，欄位 `image` 可多張） |
+
+```bash
+# 文生圖
+curl -X POST http://<host>:3000/api/openai/v1/images/generations \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"z-image","prompt":"a cute cat","size":"1024x1024","n":1}'
+
+# 圖片編輯（z-image = img2img；qwen-image-2.1 = 多參考圖指令編輯，prompt 可用 <image1> 引用）
+curl -X POST http://<host>:3000/api/openai/v1/images/edits \
+  -F 'model=z-image' -F 'prompt=make it snowy' -F 'denoise=0.6' -F 'image=@cat.png'
+```
+
+- 請求欄位：`model`、`prompt`、`n`（1–4）、`size`（`寬x高`，64–4096）、`response_format`（`url` 或 `b64_json`），擴充欄位 `seed`、`steps`、`cfg`、`negative_prompt`、`denoise`（edits）。
+- 回傳標準 OpenAI 格式 `{ created, data: [{ url | b64_json }] }`；`url` 經同源 view 代理，需呼叫端可達 Super Studio 位址。
+- ComfyUI 位址解析：`X-ComfyUI-Host` header → `COMFYUI_HOST` 環境變數 → 預設值；認證為 `X-ComfyUI-Auth` header → `COMFYUI_AUTH` 環境變數。
+- 逾時預設 600 秒，可用 `OPENAI_COMPAT_TIMEOUT_MS` 環境變數調整。
+- 端點預設無驗證（適合內網）；若要公開暴露，請在前方加反向代理與驗證。
+- 實作位於 `lib/openai-compat.ts` 與 `app/api/openai/v1/`，工作流直接複用 `lib/workflow-templates.ts`。
+
 ## 常用指令
 
 ```bash
