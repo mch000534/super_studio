@@ -24,6 +24,9 @@ export async function GET() {
         // 擴充欄位：部分工具會忽略，介面工具可善用
         description: family.description,
         recommended: recommendedParams(id),
+        // New API 相容擴充（Cherry Studio 等客戶端讀取此欄位來自動標記
+        // 模型為生圖模型，免去使用者手動設定模型類型）
+        supported_endpoint_types: ['image-generation', 'image-edit'],
       };
     });
     return openaiJson({ object: 'list', data });
