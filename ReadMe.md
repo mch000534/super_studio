@@ -42,7 +42,7 @@ docs/           需求、規格、UI/UX 與開發任務清單
 
 - **Node.js ≥ 20**（本機使用 v20.18.0，安裝於使用者空間）
   - 若 npx/npm 不在 PATH，請先：`export PATH="$HOME/.local/node/bin:$PATH"`
-- **ComfyUI** 於 `127.0.0.1:8188` 執行（本機環境為 v0.37.4），並掛載下列模型：
+- **ComfyUI** 執行於 `http://<本機 IP>:8188`（本機環境為 v0.37.4），並掛載下列模型：
 
 | 用途 | 模型檔 |
 |------|--------|
@@ -72,7 +72,7 @@ npm run dev          # 開發模式（預設 http://localhost:3000）
 ```
 
 先在本機 ComfyUI 上傳測試素材，再到設定頁填入 ComfyUI 地址：
-- 直接連線： `http://127.0.0.1:8188`
+- 直接連線：`http://<本機 IP>:8188`（設定頁預設會依你目前的主機名稱自動填入）
 - 跨主機連線：填遠端地址，並可視需要在 ComfyUI `extra_model_paths.yaml` 或 `config` 允許 CORS，或加自訂 header（`X-ComfyUI-Host` / `X-ComfyUI-Auth`）
 
 > 代理設計：前端呼叫同源的 `/api/comfyui/*`，由 Next.js 依 `X-ComfyUI-Host`/`X-ComfyUI-Auth` header 轉發，因此瀏覽器不需直接暴露遠端地址。
@@ -113,17 +113,94 @@ npm run dev          # 開發模式（預設 http://localhost:3000）
 | `POST /api/openai/v1/images/generations` | 文生圖（JSON body） |
 | `POST /api/openai/v1/images/edits` | 圖生圖／圖片編輯（multipart form，欄位 `image` 可多張） |
 
-> 站內說明頁：啟動後開啟 `/api-docs`（左欄底部「API 說明」），內含完整參數表、curl 範例與錯誤碼。
+Base URL 就是你開啟工作台的網址再加上 `/api/openai/v1`，目前本機為：
+
+```
+http://172.16.30.35:3000/api/openai/v1
+```
+
+> 站內說明頁：開啟 `/api-docs`（左欄底部「API 說明」）。該頁會依你實際開啟的網址自動顯示 Base URL，並含完整參數表、cURL／JavaScript／Python 範例與錯誤碼。
+
+### cURL
 
 ```bash
+BASE=http://172.16.30.35:3000/api/openai/v1
+
+# 查詢模型
+curl $BASE/models
+
 # 文生圖
-curl -X POST http://<host>:3000/api/openai/v1/images/generations \
+curl -X POST $BASE/images/generations \
   -H 'Content-Type: application/json' \
   -d '{"model":"z-image","prompt":"a cute cat","size":"1024x1024","n":1}'
 
 # 圖片編輯（z-image = img2img；qwen-image-2.1 = 多參考圖指令編輯，prompt 可用 <image1> 引用）
-curl -X POST http://<host>:3000/api/openai/v1/images/edits \
+curl -X POST $BASE/images/edits \
   -F 'model=z-image' -F 'prompt=make it snowy' -F 'denoise=0.6' -F 'image=@cat.png'
+```
+
+### JavaScript（Node 18+ / 瀏覽器）
+
+```js
+const BASE = 'http://172.16.30.35:3000/api/openai/v1';
+
+const gen = await fetch(`${BASE}/images/generations`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ model: 'z-image', prompt: 'a cute cat', size: '1024x1024', n: 1 }),
+}).then((r) => r.json());
+console.log(gen.data[0].url);
+
+const form = new FormData();
+form.append('model', 'z-image');
+form.append('prompt', 'make it snowy');
+form.append('image', await openAsBlob('./cat.png'), 'cat.png'); // import { openAsBlob } from 'node:fs'
+await fetch(`${BASE}/images/edits`, { method: 'POST', body: form });
+```
+
+也可以直接用官方 SDK（`npm i openai`）：
+
+```js
+import OpenAI from 'openai';
+
+const client = new OpenAI({ baseURL: 'http://172.16.30.35:3000/api/openai/v1', apiKey: 'not-needed' });
+const result = await client.images.generate({ model: 'z-image', prompt: 'a cute cat' });
+console.log(result.data[0].url);
+```
+
+### Python
+
+```python
+import requests
+
+BASE = "http://172.16.30.35:3000/api/openai/v1"
+
+res = requests.post(f"{BASE}/images/generations", json={
+    "model": "z-image",
+    "prompt": "a cute cat",
+    "size": "1024x1024",
+    "n": 1,
+})
+print(res.json()["data"])
+
+# 圖片編輯（multipart；edits 預設回 b64_json，要 url 請明確指定 response_format）
+with open("cat.png", "rb") as f:
+    res = requests.post(
+        f"{BASE}/images/edits",
+        data={"model": "z-image", "prompt": "make it snowy", "denoise": 0.6},
+        files={"image": f},
+    )
+print(res.json()["data"])
+```
+
+官方 SDK（`pip install openai`）：
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://172.16.30.35:3000/api/openai/v1", api_key="not-needed")
+result = client.images.generate(model="z-image", prompt="a cute cat")
+print(result.data[0].url)
 ```
 
 - 請求欄位：`model`、`prompt`、`n`（1–4）、`size`（`寬x高`，64–4096）、`response_format`（`url` 或 `b64_json`），擴充欄位 `seed`、`steps`、`cfg`、`negative_prompt`、`denoise`（edits）。

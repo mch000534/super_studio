@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { headers } from 'next/headers';
 import { ArrowLeft, BookOpen } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,27 @@ export const metadata = {
   title: 'OpenAI 相容 API — Super Studio',
   description: '以 OpenAI 格式呼叫本機 ComfyUI 生圖能力的相容層說明',
 };
+
+/**
+ * 依「目前開啟本頁的網址」推導對外 Base URL，讓說明頁永遠顯示實際可用的位址
+ * （不使用 localhost / 127.0.0.1 之類的佔位字串）。
+ */
+function resolveBaseUrl(h: Headers): string {
+  const forwardedHost = h.get('x-forwarded-host');
+  const host = (forwardedHost ? forwardedHost.split(',')[0] : h.get('host'))?.trim() ?? '';
+  const proto = h.get('x-forwarded-proto')?.split(',')[0].trim() || 'http';
+  return host ? `${proto}://${host}` : '';
+}
+
+/** 與 `stores/settings-store.ts:getDefaultHost()` 相同規則：以目前主機名稱 + 8188 推導。 */
+function resolveComfyuiDefaultHost(baseUrl: string): string {
+  if (!baseUrl) return '';
+  try {
+    return `http://${new URL(baseUrl).hostname}:8188`;
+  } catch {
+    return '';
+  }
+}
 
 function Field({
   name,
@@ -67,7 +89,20 @@ function Code({ children }: { children: string }) {
   );
 }
 
-export default function ApiDocsPage() {
+function Example({ title, children }: { title: string; children: string }) {
+  return (
+    <div>
+      <p className="mb-2 text-sm font-medium">{title}</p>
+      <Code>{children}</Code>
+    </div>
+  );
+}
+
+export default async function ApiDocsPage() {
+  const baseUrl = resolveBaseUrl(await headers());
+  const apiBase = baseUrl ? `${baseUrl}/api/openai/v1` : '(無法取得目前網址)';
+  const comfyuiHost = resolveComfyuiDefaultHost(baseUrl);
+
   return (
     <main className="mx-auto max-w-3xl p-6 pb-24">
       <div className="mb-6 flex items-center gap-3">
@@ -88,15 +123,28 @@ export default function ApiDocsPage() {
       </p>
 
       <div className="mt-6 space-y-6">
+        <Card className="border-primary/40">
+          <CardHeader>
+            <CardTitle className="text-base">Base URL</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              依照你目前開啟本頁的網址自動產生，直接複製到客戶端即可：
+            </p>
+            <Code>{apiBase}</Code>
+            <p className="text-xs text-muted-foreground">
+              完整端點為 <code className="font-mono">{`${apiBase}/models`}</code>、
+              <code className="font-mono">{`${apiBase}/images/generations`}</code>、
+              <code className="font-mono">{`${apiBase}/images/edits`}</code>。
+            </p>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle className="text-base">端點一覽</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              將客戶端的 Base URL 設為 <code className="font-mono">http://&lt;主機&gt;:3000/api/openai/v1</code>
-              （工作台開發時預設為 <code className="font-mono">npm run dev</code> 的 3000 埠）。
-            </p>
             <div className="overflow-hidden rounded-lg border">
               {ENDPOINTS.map((e) => (
                 <div
@@ -125,20 +173,27 @@ export default function ApiDocsPage() {
             <CardTitle className="text-base">ComfyUI 主機與認證</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              每個請求都可帶上要連線的 ComfyUI 位址；未提供時依序退回環境變數與預設值：
-            </p>
+            <p>每個請求都可帶上要連線的 ComfyUI 位址；未提供時依序退回環境變數與預設值：</p>
             <ol className="list-decimal space-y-1 pl-5">
               <li>
-                <code className="font-mono">X-ComfyUI-Host</code> 請求標頭（例如
-                <code className="font-mono"> http://127.0.0.1:8188</code>）
+                <code className="font-mono">X-ComfyUI-Host</code> 請求標頭
+                {comfyuiHost ? (
+                  <>
+                    （本機預設為 <code className="font-mono">{comfyuiHost}</code>）
+                  </>
+                ) : null}
               </li>
               <li>
                 <code className="font-mono">COMFYUI_HOST</code> 環境變數
               </li>
               <li>
-                <code className="font-mono">DEFAULT_HOST</code>（內建預設
-                <code className="font-mono"> http://127.0.0.1:8188</code>）
+                <code className="font-mono">DEFAULT_HOST</code>
+                {comfyuiHost ? (
+                  <>
+                    （設定頁依目前主機名稱推導的預設值：
+                    <code className="font-mono"> {comfyuiHost}</code>）
+                  </>
+                ) : null}
               </li>
             </ol>
             <p>
@@ -246,11 +301,7 @@ export default function ApiDocsPage() {
             />
             <Field name="n" type="integer" desc="生成張數，1–4，預設 1。" />
             <Field name="size" type="string" desc="「寬x高」，規則同文生圖。" />
-            <Field
-              name="response_format"
-              type="string"
-              desc="b64_json（預設）或 url。"
-            />
+            <Field name="response_format" type="string" desc="b64_json（預設）或 url。" />
             <Field name="denoise" type="number" desc="改動幅度 0–1，僅 z-image 使用，預設 0.6。" />
             <Field name="seed" type="number" desc="隨機種子，-1 表示隨機。" />
             <Field name="steps" type="number" desc="取樣步數，預設依模型建議值。" />
@@ -263,36 +314,154 @@ export default function ApiDocsPage() {
           <CardHeader>
             <CardTitle className="text-base">使用範例</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div>
-              <p className="mb-2 text-sm font-medium">查詢模型</p>
-              <Code>{`curl http://localhost:3000/api/openai/v1/models`}</Code>
-            </div>
-            <div>
-              <p className="mb-2 text-sm font-medium">文字生成圖片</p>
-              <Code>{`curl http://localhost:3000/api/openai/v1/images/generations \\
+              <p className="mb-3 text-sm font-semibold">cURL</p>
+              <div className="space-y-4">
+                <Example title="查詢模型">{`curl ${apiBase}/models`}</Example>
+                <Example title="文字生成圖片">{`curl ${apiBase}/images/generations \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "qwen-image-2.1",
     "prompt": "一隻在雪地奔跑的柴犬，電影感光影",
     "size": "1024x1024",
     "n": 2
-  }'`}</Code>
-            </div>
-            <div>
-              <p className="mb-2 text-sm font-medium">圖片編輯（multipart）</p>
-              <Code>{`curl http://localhost:3000/api/openai/v1/images/edits \\
+  }'`}</Example>
+                <Example title="圖片編輯（multipart）">{`curl ${apiBase}/images/edits \\
   -F "model=qwen-image-2.1" \\
   -F "prompt=把背景換成黃昏的海邊" \\
   -F "image=@input.png" \\
-  -F "response_format=url"`}</Code>
-            </div>
-            <div>
-              <p className="mb-2 text-sm font-medium">指定其他 ComfyUI 主機</p>
-              <Code>{`curl http://localhost:3000/api/openai/v1/images/generations \\
-  -H "X-ComfyUI-Host: http://192.168.1.50:8188" \\
+  -F "response_format=url"`}</Example>
+                <Example title="指定其他 ComfyUI 主機">{`curl ${apiBase}/images/generations \\
+  -H "X-ComfyUI-Host: ${comfyuiHost || 'http://<ComfyUI 主機>:8188'}" \\
   -H "Content-Type: application/json" \\
-  -d '{"prompt": "cat"}'`}</Code>
+  -d '{"prompt": "cat"}'`}</Example>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-3 text-sm font-semibold">JavaScript / Node.js</p>
+              <div className="space-y-4">
+                <Example title="使用內建 fetch（Node 18+／瀏覽器）">{`import { openAsBlob } from 'node:fs'; // 瀏覽器環境可改用 <input type="file"> 取得的 File
+
+const BASE = '${apiBase}';
+
+// 查詢模型
+const models = await fetch(\`\${BASE}/models\`).then((r) => r.json());
+
+// 文字生成圖片
+const gen = await fetch(\`\${BASE}/images/generations\`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    model: 'qwen-image-2.1',
+    prompt: '一隻在雪地奔跑的柴犬，電影感光影',
+    size: '1024x1024',
+    n: 2,
+  }),
+}).then((r) => r.json());
+console.log(gen.data[0].url);
+
+// 圖片編輯（edits 預設回 b64_json，要網址時明確指定 response_format=url）
+const form = new FormData();
+form.append('prompt', '把背景換成黃昏的海邊');
+form.append('response_format', 'url');
+form.append('image', await openAsBlob('./input.png'), 'input.png');
+
+const edited = await fetch(\`\${BASE}/images/edits\`, {
+  method: 'POST',
+  body: form,
+}).then((r) => r.json());
+console.log(edited.data[0].url);`}</Example>
+                <Example title="使用 openai 官方套件（npm i openai）">{`import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: '${apiBase}',
+  apiKey: 'not-needed', // 本機預設不驗證，但仍需給 SDK 一個非空字串
+});
+
+const result = await client.images.generate({
+  model: 'qwen-image-2.1',
+  prompt: '一隻在雪地奔跑的柴犬，電影感光影',
+  size: '1024x1024',
+  n: 2,
+});
+console.log(result.data[0].url);`}</Example>
+                <Example title="使用 Vercel AI SDK（npm i ai @ai-sdk/openai-compatible）">{`import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { generateImage } from 'ai';
+import { readFileSync } from 'node:fs';
+
+const studio = createOpenAICompatible({
+  name: 'super-studio',
+  baseURL: '${apiBase}',
+  apiKey: 'not-needed', // 本機預設不驗證，但仍需給 SDK 一個非空字串
+});
+
+// 文字生成圖片
+const { images } = await generateImage({
+  model: studio.imageModel('qwen-image-2.1'),
+  prompt: '一隻在雪地奔跑的柴犬，電影感光影',
+  size: '1024x1024',
+});
+
+// 圖片編輯：來源圖放在 prompt.images
+const edited = await generateImage({
+  model: studio.imageModel('qwen-image-2.1'),
+  prompt: {
+    text: '把背景換成黃昏的海邊',
+    images: [readFileSync('./input.png')],
+  },
+});
+console.log(edited.images[0].base64.length);`}</Example>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-3 text-sm font-semibold">Python</p>
+              <div className="space-y-4">
+                <Example title="使用 requests（pip install requests）">{`import requests
+
+BASE = "${apiBase}"
+
+# 查詢模型
+print(requests.get(f"{BASE}/models").json())
+
+# 文字生成圖片
+res = requests.post(
+    f"{BASE}/images/generations",
+    json={
+        "model": "qwen-image-2.1",
+        "prompt": "一隻在雪地奔跑的柴犬，電影感光影",
+        "size": "1024x1024",
+        "n": 2,
+    },
+)
+for item in res.json()["data"]:
+    print(item.get("url") or item["b64_json"][:32])
+
+# 圖片編輯（multipart；edits 預設回 b64_json）
+with open("input.png", "rb") as f:
+    res = requests.post(
+        f"{BASE}/images/edits",
+        data={"prompt": "把背景換成黃昏的海邊", "response_format": "url"},
+        files={"image": f},
+    )
+print(res.json()["data"])`}</Example>
+                <Example title="使用 openai 官方套件（pip install openai）">{`from openai import OpenAI
+
+client = OpenAI(
+    base_url="${apiBase}",
+    api_key="not-needed",  # 本機預設不驗證，但仍需給 SDK 一個非空字串
+)
+
+result = client.images.generate(
+    model="qwen-image-2.1",
+    prompt="一隻在雪地奔跑的柴犬，電影感光影",
+    size="1024x1024",
+    n=2,
+)
+print(result.data[0].url)`}</Example>
+              </div>
             </div>
           </CardContent>
         </Card>

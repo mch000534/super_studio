@@ -383,11 +383,12 @@
 
 ### I3. OpenAI 相容層說明
 - [x] **I3.1 站內說明頁**（`app/api-docs/page.tsx`，左欄底部「API 說明」）
-  - 端點表、參數、curl 範例、`response_format` 預設差異、host/auth/timeout、錯誤碼、涵蓋範圍。
-  - 完成判定：`/api-docs` 可開啟且內容與 `lib/openai-compat.ts` 一致。
+  - 端點表、參數、cURL／JavaScript／Python 範例、`response_format` 預設差異、host/auth/timeout、錯誤碼、涵蓋範圍。
+  - Base URL 由請求的 `Host`/`x-forwarded-host`（加上 `x-forwarded-proto`）推導，直接顯示目前網址；ComfyUI 預設位址沿用 `getDefaultHost()` 規則（主機名稱 + 8188）。
+  - 完成判定：`/api-docs` 可開啟，顯示目前網址且內容與 `lib/openai-compat.ts` 一致（無 localhost／127.0.0.1）。
 
 - [x] **I3.2 文件更新**（`ReadMe.md`、`docs/spec.md` §16、`docs/requirements.md`、`AGENTS.md`）
-  - 功能清單與模式輸入表、模型表（音樂／3D）、OpenAI 章節與涵蓋範圍註記。
+  - 功能清單與模式輸入表、模型表（音樂／3D）、OpenAI 章節與涵蓋範圍註記、Base URL 與 JavaScript／Python 範例。
   - 完成判定：文件與實作一致，且音樂／3D 明確標示不經 OpenAI API。
 
 ### I4. 進度標籤修正

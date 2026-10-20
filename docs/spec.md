@@ -590,6 +590,8 @@ QueueTask = {
 
 三者皆提供 `OPTIONS`（CORS 預檢，允許任意來源）。
 
+Base URL 為「開啟工作台的網址 + `/api/openai/v1`」，例如 `http://172.16.30.35:3000/api/openai/v1`；站內說明頁會依實際請求推導，不需硬編。
+
 ### 16.3 ComfyUI 目標解析
 
 ```
@@ -625,7 +627,8 @@ queueWorkflow(POST /prompt) → 取得 prompt_id
 - 成功：`{ created, data: [{ url | b64_json }] }`。
 - 失敗：`{ error: { message, type, param, code } }`（如 `invalid_request_error`、`model_not_found`、`comfyui_unreachable`、`timeout`）。
 - 實作集中於 `lib/openai-compat.ts`，工作流直接複用 `lib/workflow-templates.ts`。
-- 站內說明頁位於 `app/api-docs/`；預設無驗證，公開部署時應在前方加反向代理與驗證。
+- 站內說明頁位於 `app/api-docs/`（由 `lib/openai-compat.ts` 的實際行為撰寫）：頁面會以請求的 `Host`（或 `x-forwarded-host`）與 `x-forwarded-proto` 推導並顯示目前的 Base URL，ComfyUI 預設位址則沿用 `getDefaultHost()` 的規則（目前主機名稱 + 8188），因此不需在文件中硬寫 IP 或 localhost。範例涵蓋 cURL、JavaScript（fetch／openai／Vercel AI SDK）與 Python（requests／openai）。
+- 預設無驗證，公開部署時應在前方加反向代理與驗證。
 
 ---
 
