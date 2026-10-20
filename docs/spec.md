@@ -222,7 +222,8 @@ init() → 開啟連線 → 收到 status → ready
 ```
 template = {
   name,                // 顯示名稱
-  mode,                // text2img | img2img | text2vid | img2vid | img_upscale | vid_upscale
+  mode,                // text2img | img2img | img_edit | text2vid | img2vid
+                       // | img_upscale | vid_upscale | text2music | img23d | custom
   build(params),       // 給定參數，產生完整 workflow JSON
   extraData?,          // 上傳圖片名、特殊節點設定
 }
@@ -276,6 +277,41 @@ LoadVideo(源影片) → SeedVR2 處理節點(搭配 seedvr2 VAE) → SaveVideo
 ```
 - 源影片需 `POST /upload/video` 上傳至 ComfyUI input 資料夾。
 - 放大倍數/相關設定經設定面板控制。
+
+**圖片編輯（Qwen-Image-2.1）**
+```
+LoadImage(image1..imageN) → QwenImageEdit 節點串（依參考圖數量）
+Qwen-Image-2.1 UNET/CLIP/VAE → KSampler → VAEDecode → SaveImage
+```
+- prompt 可用 `<image1>`、`<image2>` 引用參考圖；`image1` 為編輯目標。
+- 同一模式在 OpenAI 相容層也可對應 `z-image` 的單圖 img2img（見 §16）。
+
+**文生音樂（MiniMax Music 3）**
+```
+UNETLoader(minimax_music3_dit_fp16) + CLIPLoader(type=minimax) + VAELoader(minimax_music3_dav)
+MiniMaxMusic3TextEncode(caption=prompt, lyrics, seed, max_duration, cfg_scale=1.7)
+→ ConditioningZeroOut(negative) + EmptyMiniMaxMusic3LatentAudio → KSampler(steps=30, cfg=1.7, euler/simple)
+→ VAEDecodeAudio → SaveAudioMP3(quality=320k)
+```
+- 使用者參數：曲風描述（caption）、歌詞（可留空）、時長（5–300 秒）、seed。
+- steps/cfg/sampler 由模板固定（30 / 1.7 / euler+simple），面板不暴露。
+- **輸出為音訊檔**，歷史輸出 key 為 `audio`，畫廊以 `<audio>` 播放。
+
+**圖片轉 3D（TRELLIS 2）**
+```
+LoadImage → RemoveBackground(birefnet) → ImageCropToMask(1024², pad 1.1)
+CLIPVisionLoader(dino_v3_L) → Trellis2Conditioning
+結構階段：EmptyTrellis2LatentStructure → KSampler(12) → VaeDecodeStructureTrellis2
+形狀階段：Trellis2ShapeStage → KSampler(20) → Trellis2UpsampleStage(1536) → KSampler(12) → VaeDecodeShapeTrellis
+紋理階段：Trellis2TextureStage → KSampler(12) → VaeDecodeTextureTrellis
+網格：GetMeshInfo → RemeshMesh(768, udf) → DecimateMesh → MeshSmoothNormals
+       → UnwrapMesh(4096, pec) → BakeTextureFromVoxel(4K) + BakeAmbientOcclusion + BakeNormalMapFromMesh
+       → ApplyTextureToMesh → MeshToFile3D → SaveGLB
+```
+- 使用者參數：來源圖片、seed；不需提示詞，步驟數/解析度由模板固定。
+- CFG 於結構與形狀階段以 `CFGOverride` + `RescaleCFG` + `ModelSamplingSD3` 分時控制。
+- **輸出為 GLB**，歷史輸出 key 為 `3d`；`GetMeshInfo` 的文字資訊（`mesh_info.text`）不納入畫廊。
+- 畫廊以 `@google/model-viewer`（client-only 動態載入）預覽模型。
 
 ### 5.4 參數整形函式（同一規格）
 
@@ -332,7 +368,7 @@ Record = {
   prompt,        // 提示詞
   params,        // 參數快照
   thumbnailUrl,  // 縮圖（ObjectURL 或代理 URL）
-  media,         // [{ filename, subfolder, type, kind: image|video }]
+  media,         // [{ filename, subfolder, type, kind: image|video|audio|3d }]
 }
 ```
 
@@ -340,6 +376,8 @@ Record = {
 
 - 圖片：用 ComfyUI `/view?...&preview=webp;90&res=300` 產生小縮圖 URL。
 - 影片：播放器首幀截圖（`<video>` 載入後取 currentTime=0），或僅顯示圖示 + 檔名。
+- 音樂（`audio`）：檔名 + 音訊圖示縮圖，畫廊內以 `<audio controls>` 播放。
+- 3D（`3d`）：檔名 + 3D 圖示縮圖，畫廊內以 GLB 檢視器呈現。
 - 注意：**ObjectURL 不跨 session**，故縮圖應使用可重新取得的代理 URL，存 URL 而非 blob。
 
 ### 7.3 重新載入
@@ -396,6 +434,14 @@ Record = {
 - 所有代理需處理：超時、非 2xx 狀態碼、二進位 body 的透傳（Content-Type 保留）。
 - host 由請求 header `X-ComfyUI-Host` 決定；若缺省回退到設定值。
 
+另有對外（外部工具用）的 OpenAI 相容端點，規格見 §16：
+
+| 前端路由 | 方法 | 說明 |
+|----------|------|------|
+| `/api/openai/v1/models` | GET | 列出可用生圖模型（OpenAI 格式） |
+| `/api/openai/v1/images/generations` | POST | 文生圖（JSON body） |
+| `/api/openai/v1/images/edits` | POST | 圖生圖／圖片編輯（multipart form） |
+
 ---
 
 ## 10. 錯誤處理與使用者回饋
@@ -428,7 +474,8 @@ Record = {
 | `lib/websocket-manager.ts` | WebSocket 連線、重連、事件分發、二進位處理 |
 | `lib/workflow-templates.ts` | 內建模板的 `build(params)` |
 | `lib/workflow-parser.ts` | 自定義工作流解析、可設定節點偵測、UI 映射 |
-| `lib/modes.ts` | 七種生成模式的註冊與 meta |
+| `lib/modes.ts` | 十種生成模式的註冊與 meta |
+| `lib/openai-compat.ts` | OpenAI Images API 相容層（模型解析、參數校驗、提交與輪詢、回應轉換） |
 | `lib/llm-client.ts` | OpenAI 相容 API（Ollama 等）客戶端、錯誤正規化 |
 | `lib/prompt-optimizer.ts` | 提示詞優化／圖片反推的 prompt 構建與解析 |
 | `lib/drag-drop.ts` | 拖放上傳輔助 |
@@ -438,6 +485,9 @@ Record = {
 | `hooks/use-llm.ts` | LLM 優化/反推流程 |
 | `app/api/comfyui/*` | Next.js ComfyUI 代理 |
 | `app/api/llm/*` | Next.js LLM（OpenAI 相容）代理 |
+| `app/api/openai/v1/*` | 對外的 OpenAI Images 相容端點（見 §16） |
+| `app/api-docs/` | 站內 OpenAI 相容 API 說明頁 |
+| `components/gallery/glb-viewer.tsx` | GLB 3D 預覽（`@google/model-viewer`，client-only） |
 | `app/queue/` | 生成佇列頁面 |
 
 ---
@@ -521,6 +571,61 @@ QueueTask = {
 - 僅模式有參考圖（img2img）時，按鈕改為「反推圖片並優化」。
 - 參考圖經 `getViewUrl` 取代理 URL → 由前端讀成 dataURL → `buildDescribeMessages(dataUrl)` 送多模態 model。
 - 模型回傳圖片英文描述 → 再走優化流程 → 回填正負向提示詞。
+
+---
+
+## 16. OpenAI 相容層（對外生圖 API）
+
+### 16.1 目的與範圍
+
+讓外部工具以 OpenAI Images API 格式呼叫本專案的 ComfyUI 生圖能力。**僅涵蓋文生圖與圖片編輯**；影片、放大、音樂、3D 仍只在工作台內使用。
+
+### 16.2 端點
+
+| 端點 | 方法 | 請求 | 說明 |
+|------|------|------|------|
+| `/api/openai/v1/models` | GET | — | 回傳可用模型與建議參數 |
+| `/api/openai/v1/images/generations` | POST | JSON | 文生圖 |
+| `/api/openai/v1/images/edits` | POST | multipart | 圖生圖／圖片編輯 |
+
+三者皆提供 `OPTIONS`（CORS 預檢，允許任意來源）。
+
+### 16.3 ComfyUI 目標解析
+
+```
+host = X-ComfyUI-Host header → COMFYUI_HOST 環境變數 → DEFAULT_HOST
+auth = X-ComfyUI-Auth header → COMFYUI_AUTH 環境變數
+timeout = OPENAI_COMPAT_TIMEOUT_MS（毫秒，預設 600000）
+```
+
+走 server-to-server 呼叫（不需 WebSocket），因此 ComfyUI 必須是本伺服器可連線的位址。
+
+### 16.4 參數
+
+| 欄位 | 說明 |
+|------|------|
+| `model` | `z-image`（預設）或 `qwen-image-2.1`；未知值回 404 `model_not_found` |
+| `prompt` | 必填 |
+| `n` | 張數 1–4，預設 1 |
+| `size` | `寬x高`，64–4096；`auto` 等同預設 1024x1024 |
+| `response_format` | `url` / `b64_json`；generations 預設 `url`，edits 預設 `b64_json` |
+| `seed` / `steps` / `cfg` / `negative_prompt` | 擴充欄位；steps/cfg 未給時依模型建議值 |
+| `denoise` | 僅 edits；z-image 單圖 img2img 的改動幅度（預設 0.6） |
+
+edits 以 `model` 決定工作流：`qwen-image-2.1` 走多參考圖指令編輯，其餘走 `z-image` img2img。
+
+### 16.5 執行流程與回應
+
+```
+queueWorkflow(POST /prompt) → 取得 prompt_id
+→ 每 1 秒輪詢 /history/<prompt_id> → 有 images 輸出即回傳
+→ url 模式組 /api/comfyui/view 代理網址；b64_json 模式直接取回二進位轉 base64
+```
+
+- 成功：`{ created, data: [{ url | b64_json }] }`。
+- 失敗：`{ error: { message, type, param, code } }`（如 `invalid_request_error`、`model_not_found`、`comfyui_unreachable`、`timeout`）。
+- 實作集中於 `lib/openai-compat.ts`，工作流直接複用 `lib/workflow-templates.ts`。
+- 站內說明頁位於 `app/api-docs/`；預設無驗證，公開部署時應在前方加反向代理與驗證。
 
 ---
 

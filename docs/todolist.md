@@ -352,6 +352,51 @@
 
 ---
 
+## I. Phase 7 — 音樂、3D 與 OpenAI 相容層
+
+### I1. 文生音樂（MiniMax Music 3）
+- [x] **I1.1 模式註冊與型別**（`types/workflow.ts`、`lib/modes.ts`）
+  - 新增 `text2music` 模式、`MediaKind` 加入 `audio`、`GenerationParams.lyrics`。
+  - 完成判定：左欄出現「文生音樂」，可切換。
+
+- [x] **I1.2 工作流模板**（`lib/workflow-templates.ts:buildText2Music`）
+  - 對照本機官方模板 `audio_minimax_music_3`；`SaveAudioMP3` 320k、steps 30 / cfg 1.7 / euler+simple 固定。
+  - 完成判定：對本機 ComfyUI 實跑成功並產出 MP3（歷史輸出 key 為 `audio`）。
+
+- [x] **I1.3 控制面板與播放**（`right-panel.tsx`、`gallery/media-card.tsx`）
+  - 只暴露曲風描述、歌詞、時長、seed；結果以 `<audio>` 播放。
+  - 完成判定：面板可生成，畫廊可播放與下載。
+
+### I2. 圖片轉 3D（TRELLIS 2）
+- [x] **I2.1 模式註冊與型別**
+  - 新增 `img23d` 模式（無提示詞、需 `imageName`）；驗證邏輯同步調整。
+  - 完成判定：左欄出現「圖片轉 3D」且未選圖時給出正確提示。
+
+- [x] **I2.2 工作流模板**（`lib/workflow-templates.ts:buildImg23D`）
+  - 對照官方模板 `3d_pixal3d_trellis2_image_to_model`；含去背景、結構/形狀/上採樣/紋理、重拓樸、UV 展開、4K 貼圖烘焙與 `SaveGLB`。
+  - `RemeshMesh` 需帶 `sign_mode.qef` 等三個子輸入。
+  - 完成判定：對本機 ComfyUI 實跑成功並產出合法 GLB（歷史輸出 key 為 `3d`）。
+
+- [x] **I2.3 3D 預覽**（`components/gallery/glb-viewer.tsx`）
+  - 以 `@google/model-viewer` client-only 動態載入，畫廊／檢視器可旋轉檢視。
+  - 完成判定：GLB 可在畫廊開啟並互動。
+
+### I3. OpenAI 相容層說明
+- [x] **I3.1 站內說明頁**（`app/api-docs/page.tsx`，左欄底部「API 說明」）
+  - 端點表、參數、curl 範例、`response_format` 預設差異、host/auth/timeout、錯誤碼、涵蓋範圍。
+  - 完成判定：`/api-docs` 可開啟且內容與 `lib/openai-compat.ts` 一致。
+
+- [x] **I3.2 文件更新**（`ReadMe.md`、`docs/spec.md` §16、`docs/requirements.md`、`AGENTS.md`）
+  - 功能清單與模式輸入表、模型表（音樂／3D）、OpenAI 章節與涵蓋範圍註記。
+  - 完成判定：文件與實作一致，且音樂／3D 明確標示不經 OpenAI API。
+
+### I4. 進度標籤修正
+- [x] **I4.1 節點中文名稱對應**（`hooks/use-generation.ts`）
+  - 以 `submittedWorkflows` map 將 `executing` 事件的節點 id 經 `class_type` 對應 `NODE_NAMES`。
+  - 完成判定：進度列顯示中文節點名稱而非 `#id`。
+
+---
+
 ## G. 品質與收尾
 
 - [x] **G1. TypeScript 型別檢查**
@@ -386,6 +431,7 @@
 | Phase 4 放大        | E |
 | Phase 5 進階        | F |
 | Phase 6 佇列 + LLM  | H |
+| Phase 7 音樂/3D/OpenAI | I |
 | 收尾               | G |
 
 ---
@@ -400,7 +446,8 @@ A1-A5（初始化）
                   └─ E1/E2(放大) → E3(畫廊放大)
                        └─ F1(自定義) → F2(歷史) → F3(畫廊拆分)
                             └─ H(佇列 + LLM)
-                                 └─ G(品質收尾)
+                                 └─ I(音樂/3D + OpenAI 說明頁)
+                                      └─ G(品質收尾)
 ```
 
 ---

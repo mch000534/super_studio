@@ -48,6 +48,9 @@ export interface FileInfo {
 export interface HistoryOutputImages {
   images?: FileInfo[];
   gifs?: FileInfo[];
+  audio?: FileInfo[];
+  '3d'?: FileInfo[];
+  text?: string[];
 }
 
 export interface HistoryOutput {

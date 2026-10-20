@@ -1,6 +1,6 @@
 'use client';
 
-import { Download, Maximize2, ArrowUpDown } from 'lucide-react';
+import { Download, Maximize2, ArrowUpDown, Box } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { setGalleryDragData } from '@/lib/drag-drop';
 import type { MediaItem } from '@/types/workflow';
@@ -39,13 +39,29 @@ export function MediaCard({ item, onOpen, onUpscale }: MediaCardProps) {
           loading="lazy"
           className="aspect-square w-full object-cover transition-transform group-hover:scale-[1.02]"
         />
-      ) : (
+      ) : item.kind === 'video' ? (
         <video
           src={item.url}
           muted
           preload="metadata"
           className="aspect-square w-full object-cover"
         />
+      ) : item.kind === 'audio' ? (
+        <div className="flex aspect-square w-full items-center justify-center bg-secondary/50 p-3">
+          <audio
+            src={item.url}
+            controls
+            preload="metadata"
+            draggable={false}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full"
+          />
+        </div>
+      ) : (
+        <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 bg-secondary/50 p-3 text-center">
+          <Box className="h-10 w-10 text-muted-foreground/60" />
+          <span className="break-all px-1 text-[11px] text-muted-foreground">{item.filename}</span>
+        </div>
       )}
 
       {item.isUpscaled && (

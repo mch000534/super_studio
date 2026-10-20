@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Image as ImageIcon, Images, Wand2, Clapperboard, Film, ZoomIn, ScanLine, Braces, ListTodo } from 'lucide-react';
+import { Image as ImageIcon, Images, Wand2, Clapperboard, Film, ZoomIn, ScanLine, Braces, ListTodo, Music, Box, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MODES } from '@/lib/modes';
 import { useSettingsStore } from '@/stores/settings-store';
@@ -16,6 +16,8 @@ const ICONS: Record<Mode, React.ComponentType<{ className?: string }>> = {
   img2vid: Film,
   img_upscale: ZoomIn,
   vid_upscale: ScanLine,
+  text2music: Music,
+  img23d: Box,
   custom: Braces,
 };
 
@@ -50,7 +52,7 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="border-t p-3">
+      <div className="border-t p-3 space-y-1">
         <Link
           href="/queue"
           className="flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -60,6 +62,13 @@ export function Sidebar() {
             <span>生成佇列</span>
           </div>
           <span className="font-mono">{pendingCount}</span>
+        </Link>
+        <Link
+          href="/api-docs"
+          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          <span>API 說明</span>
         </Link>
       </div>
     </aside>

@@ -10,7 +10,7 @@
 
 ### 核心價值
 - 將 ComfyUI 的強大能力包裝為簡單易用的 UI
-- 支持多種生成模式：文生圖、圖生圖、文生視頻、圖生視頻
+- 支持多種生成模式：文生圖、圖生圖、圖片編輯、文生視頻、圖生視頻、圖片/影片放大、文生音樂、圖片轉 3D
 - 提供即時生成進度反饋
 - 支持任務排隊與批次管理
 - 用戶可自定義 ComfyUI 連接地址
@@ -299,12 +299,15 @@ And 原始影片應保持不變
 
 | 模式 | 工作流 | 核心參數 |
 |------|--------|----------|
-| 文生圖 | Z-Image-Turbo | prompt, width, height, seed, steps(8), unet_name, clip_name, vae_name |
+| 文生圖 | Z-Image-Turbo / Qwen-Image-2.1 | prompt, image_model, width, height, seed, steps, unet_name, clip_name, vae_name |
 | 圖生圖 | Z-Image-Turbo + LoadImage + denoise | prompt, image, denoise, width, height, seed |
+| 圖片編輯 | Qwen-Image-2.1（多參考圖指令編輯） | prompt, image1..imageN（≤10）, resolution, seed |
 | 文生視頻 | MiniMax H3 (prompt only) | prompt, width, height, duration, fps, noise_seed, unet_name, clip_name, vae_name, audio_vae, turbo_mode, lora_name |
 | 圖生視頻 | MiniMax H3 (first_frame/last_frame) | prompt, first_frame, last_frame, width, height, duration, fps, noise_seed, turbo_mode, lora_name |
 | 圖片放大 | RealESRGAN x4plus + 源圖片 | source_image, scale(2x/4x), upscale_model |
 | 影片放大 | SeedVR2 + 源影片 | source_video, vae, 放大設定 |
+| 文生音樂 | MiniMax Music 3 | caption(prompt), lyrics, duration(5–300s), seed（steps/cfg 固定） |
+| 圖片轉 3D | TRELLIS 2（去背景→結構→形狀→上採樣→紋理→重拓樸/UV→4K 烘焙→GLB） | image(來源圖), seed |
 | 自定義 | 用戶上傳 JSON | 動態解析 |
 
 ### 3.2 畫廊功能
@@ -641,7 +644,7 @@ super_studio/
 │   ├── websocket-manager.ts           # WebSocket 連接管理
 │   ├── workflow-templates.ts          # 預設工作流模板生成
 │   ├── workflow-parser.ts             # 工作流解析/參數提取
-│   ├── modes.ts                       # 七種生成模式註冊
+│   ├── modes.ts                       # 十種生成模式註冊
 │   ├── llm-client.ts                  # OpenAI 相容 API 客戶端
 │   ├── prompt-optimizer.ts            # 提示詞優化/圖片反推 prompt 構建
 │   ├── drag-drop.ts                   # 拖放 helper

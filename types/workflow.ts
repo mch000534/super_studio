@@ -6,9 +6,11 @@ export type Mode =
   | 'img2vid'
   | 'img_upscale'
   | 'vid_upscale'
+  | 'text2music'
+  | 'img23d'
   | 'custom';
 
-export type MediaKind = 'image' | 'video';
+export type MediaKind = 'image' | 'video' | 'audio' | '3d';
 
 export interface MediaItem {
   filename: string;
@@ -51,6 +53,9 @@ export interface GenerationParams {
   loraName?: string;
   firstFrameName?: string;
   lastFrameName?: string;
+
+  // music (text2music)
+  lyrics?: string;
 
   // upscale
   scale?: number;

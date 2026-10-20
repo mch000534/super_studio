@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Trash2, RotateCcw, Download } from 'lucide-react';
+import { ArrowLeft, Trash2, RotateCcw, Download, Music, Box } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -160,7 +160,7 @@ export default function HistoryPage() {
                 suppressHydrationWarning
                 className="h-4 w-4"
               />
-              {rec.thumbnail ? (
+              {rec.thumbnail && (rec.media[0]?.kind === 'image' || rec.media[0]?.kind === 'video') ? (
                 rec.media[0]?.kind === 'video' ? (
                   <video
                     src={rec.thumbnail}
@@ -172,6 +172,14 @@ export default function HistoryPage() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={rec.thumbnail} alt="" className="h-12 w-12 rounded object-cover" />
                 )
+              ) : rec.media[0]?.kind === 'audio' ? (
+                <div className="flex h-12 w-12 items-center justify-center rounded bg-secondary text-muted-foreground">
+                  <Music className="h-5 w-5" />
+                </div>
+              ) : rec.media[0]?.kind === '3d' ? (
+                <div className="flex h-12 w-12 items-center justify-center rounded bg-secondary text-muted-foreground">
+                  <Box className="h-5 w-5" />
+                </div>
               ) : (
                 <div className="h-12 w-12 rounded bg-secondary" />
               )}

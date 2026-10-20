@@ -31,10 +31,57 @@ const NODE_NAMES: Record<string, string> = {
   TextEncodeQwenImage21: 'Qwen-Image-2.1 提示詞編碼',
   QwenImage21Cache: 'Qwen-Image-2.1 快取',
   EmptyLatentImage: '初始化潛在空間',
+  // 音樂（MiniMax Music 3）
+  MiniMaxMusic3TextEncode: '曲風與歌詞編碼',
+  EmptyMiniMaxMusic3LatentAudio: '初始化音樂潛在空間',
+  SaveAudioMP3: '儲存音樂檔案',
+  ConditioningZeroOut: '負向條件清空',
+  // 3D（TRELLIS 2）
+  CLIPVisionLoader: '載入視覺編碼器',
+  Trellis2Conditioning: '3D 影像條件',
+  EmptyTrellis2LatentStructure: '初始化 3D 結構',
+  VaeDecodeStructureTrellis2: '解碼 3D 結構',
+  Trellis2ShapeStage: '3D 形狀生成',
+  Trellis2UpsampleStage: '3D 形狀上採樣',
+  VaeDecodeShapeTrellis: '解碼 3D 網格',
+  Trellis2TextureStage: '3D 紋理生成',
+  VaeDecodeTextureTrellis: '解碼 3D 紋理',
+  GetMeshInfo: '讀取網格資訊',
+  RemeshMesh: '網格重拓樑',
+  DecimateMesh: '網格減面',
+  MeshSmoothNormals: '平滑網格法線',
+  UnwrapMesh: 'UV 展開',
+  BakeTextureFromVoxel: '烘焙顏色貼圖',
+  BakeAmbientOcclusion: '烘焙環境光遮蔽',
+  BakeNormalMapFromMesh: '烘焙法線貼圖',
+  ApplyTextureToMesh: '套用貼圖至網格',
+  MeshToFile3D: '轉出 3D 檔案',
+  SaveGLB: '儲存 GLB 模型',
+  CFGOverride: 'CFG 調整',
+  RescaleCFG: 'CFG 縮放',
+  ModelSamplingSD3: '模型取樣設定',
+  LoadBackgroundRemovalModel: '載入去背景模型',
+  RemoveBackground: '移除背景',
+  ImageCropToMask: '裁切主體',
+  ComfySwitchNode: '圖形開關',
 };
 
-function nodeName(nodeId: string): string {
-  return NODE_NAMES[nodeId] || `節點 #${nodeId}`;
+// 已提交工作流：prompt_id → 節點表，用於把 executing 事件的節點 id 轉成中文標籤
+const submittedWorkflows = new Map<string, Record<string, { class_type: string }>>();
+
+function rememberWorkflow(promptId: string, workflow: Record<string, { class_type: string }>) {
+  submittedWorkflows.set(promptId, workflow);
+  if (submittedWorkflows.size > 50) {
+    const oldest = submittedWorkflows.keys().next().value;
+    if (oldest) submittedWorkflows.delete(oldest);
+  }
+}
+
+function nodeName(nodeId: string, promptId?: string): string {
+  const workflow = promptId ? submittedWorkflows.get(promptId) : undefined;
+  const classType = workflow?.[nodeId]?.class_type;
+  const label = (classType && NODE_NAMES[classType]) || NODE_NAMES[nodeId];
+  return label || `節點 #${nodeId}`;
 }
 
 let globalResultHandler: ((media: MediaItem[], mode: Mode, params: GenerationParams) => void) | null =
@@ -130,13 +177,14 @@ export function useGeneration() {
             // task finished — handled by execution_success / executing node===null below
           } else if (data.node) {
             if (runningTask) {
+              const label = nodeName(data.node, data.prompt_id || currentPromptId || undefined);
               useQueueStore.getState().updateTask(runningTask.id, {
-                currentNode: nodeName(data.node),
+                currentNode: label,
                 status: 'running',
               });
               syncGenerationStore({
                 ...runningTask,
-                currentNode: nodeName(data.node),
+                currentNode: label,
                 status: 'running',
               });
             }
@@ -212,7 +260,7 @@ export function useGeneration() {
         const entry = history.data[promptId];
         if (entry) {
           Object.values(entry.outputs || {}).forEach((output) => {
-            const collect = (files: FileInfo[] | undefined, kind: 'image' | 'video') => {
+            const collect = (files: FileInfo[] | undefined, kind: MediaItem['kind']) => {
               (files || []).forEach((f) => {
                 media.push({
                   filename: f.filename,
@@ -228,6 +276,8 @@ export function useGeneration() {
             };
             collect(output.images, 'image');
             collect(output.gifs, 'video');
+            collect(output.audio, 'audio');
+            collect(output['3d'], '3d');
           });
         }
       }
@@ -313,6 +363,7 @@ export function useGeneration() {
         promptId: result.data.prompt_id,
         status: 'queued',
       });
+      rememberWorkflow(result.data.prompt_id, workflow);
 
       // If nothing is executing, this becomes the running task
       const q = useQueueStore.getState();
@@ -367,12 +418,15 @@ export function useGeneration() {
       const mode = settings.currentMode;
       const params = { ...g.params, ...overrideParams, mode };
 
-      if (!params.prompt.trim() && !['custom', 'img_upscale', 'vid_upscale'].includes(mode)) {
+      if (!params.prompt.trim() && !['custom', 'img_upscale', 'vid_upscale', 'img23d'].includes(mode)) {
         g.setError('請輸入提示詞');
         return;
       }
 
-      if (['img2img', 'img_upscale', 'vid_upscale'].includes(mode) && !params.imageName) {
+      if (
+        ['img2img', 'img_upscale', 'vid_upscale', 'img23d'].includes(mode) &&
+        !params.imageName
+      ) {
         g.setError('尚未選擇參考影像，無法生成');
         return;
       }

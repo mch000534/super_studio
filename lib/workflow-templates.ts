@@ -639,6 +639,366 @@ export function buildVidUpscale(params: GenerationParams): Record<string, Workfl
   return nodes;
 }
 
+export function buildText2Music(params: GenerationParams): Record<string, WorkflowNode> {
+  // MiniMax Music 3（對照本機 ComfyUI workflow template：audio_minimax_music_3）
+  const duration = Math.min(300, Math.max(5, Math.round(params.duration ?? 60)));
+  const seed = resolveSeed(params.seed);
+
+  return {
+    'm1': {
+      class_type: 'UNETLoader',
+      inputs: {
+        unet_name: 'minimax_music3_dit_fp16.safetensors',
+        weight_dtype: 'default',
+      },
+    },
+    'm2': {
+      class_type: 'CLIPLoader',
+      inputs: {
+        clip_name: 'minimax_music3_text_encoder_pruned_int8_convrot.safetensors',
+        type: 'minimax',
+        weight_dtype: 'default',
+      },
+    },
+    'm3': {
+      class_type: 'VAELoader',
+      inputs: { vae_name: 'minimax_music3_dav.safetensors' },
+    },
+    'm4': {
+      class_type: 'MiniMaxMusic3TextEncode',
+      inputs: {
+        clip: ['m2', 0],
+        caption: params.prompt,
+        lyrics: params.lyrics || '',
+        seed,
+        max_duration: duration,
+        cfg_scale: 1.7,
+        top_k: 50,
+      },
+    },
+    'm5': {
+      class_type: 'ConditioningZeroOut',
+      inputs: { conditioning: ['m4', 0] },
+    },
+    'm6': {
+      class_type: 'EmptyMiniMaxMusic3LatentAudio',
+      inputs: { seconds: ['m4', 1], batch_size: 1 },
+    },
+    'm7': {
+      class_type: 'KSampler',
+      inputs: {
+        model: ['m1', 0],
+        seed,
+        steps: 30,
+        cfg: 1.7,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        positive: ['m4', 0],
+        negative: ['m5', 0],
+        latent_image: ['m6', 0],
+        denoise: 1,
+      },
+    },
+    'm8': {
+      class_type: 'VAEDecodeAudio',
+      inputs: { samples: ['m7', 0], vae: ['m3', 0] },
+    },
+    'm9': {
+      class_type: 'SaveAudioMP3',
+      inputs: {
+        audio: ['m8', 0],
+        filename_prefix: `${PREFIX}-music`,
+        quality: '320k',
+      },
+    },
+  };
+}
+
+export function buildImg23D(params: GenerationParams): Record<string, WorkflowNode> {
+  // TRELLIS 2（對照本機 ComfyUI workflow template：3d_pixal3d_trellis2_image_to_model）
+  // 管線：去背景 → 方形裁切 → 結構 → 形狀 → 上採樣 → 紋理 → 重拓樑/UV 展開 → 貼圖烘焙 → GLB
+  const seed = resolveSeed(params.seed);
+
+  return {
+    // --- 預處理：去背景 + 方形裁切 ---
+    'load_image': {
+      class_type: 'LoadImage',
+      inputs: { image: params.imageName || '' },
+    },
+    'load_bg': {
+      class_type: 'LoadBackgroundRemovalModel',
+      inputs: { bg_removal_name: 'birefnet.safetensors' },
+    },
+    'remove_bg': {
+      class_type: 'RemoveBackground',
+      inputs: { bg_removal_model: ['load_bg', 0], image: ['load_image', 0] },
+    },
+    'mask': {
+      class_type: 'ComfySwitchNode',
+      inputs: { switch: true, on_false: ['load_image', 1], on_true: ['remove_bg', 0] },
+    },
+    'crop': {
+      class_type: 'ImageCropToMask',
+      inputs: {
+        images: ['load_image', 0],
+        masks: ['mask', 0],
+        width: 1024,
+        height: 1024,
+        pad_factor: 1.1,
+        grow_mask: 0,
+        background: '#000000',
+      },
+    },
+
+    // --- 影像條件 ---
+    'clip_vision': {
+      class_type: 'CLIPVisionLoader',
+      inputs: { clip_name: 'dino_v3_L_naf_fp32.safetensors' },
+    },
+    'cond': {
+      class_type: 'Trellis2Conditioning',
+      inputs: { clip_vision_model: ['clip_vision', 0], image: ['crop', 0] },
+    },
+
+    // --- 模型 ---
+    'shape_vae': {
+      class_type: 'VAELoader',
+      inputs: { vae_name: 'trellis_2_shape_vae_bf16.safetensors' },
+    },
+    'texture_vae': {
+      class_type: 'VAELoader',
+      inputs: { vae_name: 'trellis_2_texture_vae_bf16.safetensors' },
+    },
+    'unet': {
+      class_type: 'UNETLoader',
+      inputs: { unet_name: 'trellis_2_int8_convrot.safetensors', weight_dtype: 'default' },
+    },
+
+    // --- 結構階段 ---
+    'cfg_s': {
+      class_type: 'CFGOverride',
+      inputs: { model: ['unet', 0], cfg: 1, start_percent: 0.667, end_percent: 1 },
+    },
+    'rescale_s': {
+      class_type: 'RescaleCFG',
+      inputs: { model: ['cfg_s', 0], multiplier: 0.7 },
+    },
+    'model_s': {
+      class_type: 'ModelSamplingSD3',
+      inputs: { model: ['rescale_s', 0], shift: 5 },
+    },
+    'empty_s': {
+      class_type: 'EmptyTrellis2LatentStructure',
+      inputs: { batch_size: 1 },
+    },
+    'ks_s': {
+      class_type: 'KSampler',
+      inputs: {
+        model: ['model_s', 0],
+        seed,
+        steps: 12,
+        cfg: 7.5,
+        sampler_name: 'euler',
+        scheduler: 'normal',
+        positive: ['cond', 0],
+        negative: ['cond', 1],
+        latent_image: ['empty_s', 0],
+        denoise: 1,
+      },
+    },
+    'dec_s': {
+      class_type: 'VaeDecodeStructureTrellis2',
+      inputs: { samples: ['ks_s', 0], vae: ['shape_vae', 0], resolution: '32' },
+    },
+
+    // --- 形狀階段 ---
+    'cfg_sh': {
+      class_type: 'CFGOverride',
+      inputs: { model: ['unet', 0], cfg: 1, start_percent: 0.769, end_percent: 1 },
+    },
+    'rescale_sh': {
+      class_type: 'RescaleCFG',
+      inputs: { model: ['cfg_sh', 0], multiplier: 0.5 },
+    },
+    'shape_stage': {
+      class_type: 'Trellis2ShapeStage',
+      inputs: { positive: ['cond', 0], negative: ['cond', 1], voxel: ['dec_s', 0] },
+    },
+    'ks_sh': {
+      class_type: 'KSampler',
+      inputs: {
+        model: ['rescale_sh', 0],
+        seed,
+        steps: 20,
+        cfg: 7.5,
+        sampler_name: 'euler',
+        scheduler: 'normal',
+        positive: ['shape_stage', 0],
+        negative: ['shape_stage', 1],
+        latent_image: ['shape_stage', 2],
+        denoise: 1,
+      },
+    },
+    'upsample': {
+      class_type: 'Trellis2UpsampleStage',
+      inputs: {
+        positive: ['shape_stage', 0],
+        negative: ['shape_stage', 1],
+        shape_latent: ['ks_sh', 0],
+        vae: ['shape_vae', 0],
+        target_resolution: '1536',
+      },
+    },
+    'ks_sh2': {
+      class_type: 'KSampler',
+      inputs: {
+        model: ['rescale_sh', 0],
+        seed,
+        steps: 12,
+        cfg: 7.5,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        positive: ['upsample', 0],
+        negative: ['upsample', 1],
+        latent_image: ['upsample', 2],
+        denoise: 1,
+      },
+    },
+    'dec_shape': {
+      class_type: 'VaeDecodeShapeTrellis',
+      inputs: { samples: ['ks_sh2', 0], vae: ['shape_vae', 0] },
+    },
+
+    // --- 紋理階段 ---
+    'tex_stage': {
+      class_type: 'Trellis2TextureStage',
+      inputs: {
+        positive: ['upsample', 0],
+        negative: ['upsample', 1],
+        shape_latent: ['ks_sh2', 0],
+      },
+    },
+    'ks_tex': {
+      class_type: 'KSampler',
+      inputs: {
+        model: ['unet', 0],
+        seed,
+        steps: 12,
+        cfg: 1,
+        sampler_name: 'euler',
+        scheduler: 'normal',
+        positive: ['tex_stage', 0],
+        negative: ['tex_stage', 1],
+        latent_image: ['tex_stage', 2],
+        denoise: 1,
+      },
+    },
+    'dec_tex': {
+      class_type: 'VaeDecodeTextureTrellis',
+      inputs: {
+        samples: ['ks_tex', 0],
+        vae: ['texture_vae', 0],
+        shape_subdivides: ['dec_shape', 1],
+      },
+    },
+
+    // --- 網格處理與 UV 貼圖烘焙 ---
+    'mesh_info': {
+      class_type: 'GetMeshInfo',
+      inputs: { mesh: ['dec_shape', 0] },
+    },
+    'remesh': {
+      class_type: 'RemeshMesh',
+      inputs: {
+        mesh: ['mesh_info', 0],
+        resolution: 768,
+        sign_mode: 'udf',
+        'sign_mode.qef': false,
+        'sign_mode.drop_inverted_components': false,
+        'sign_mode.drop_enclosed_components': false,
+        band: 1,
+        project_back: 0,
+        fix_poles: false,
+        smooth_iters: 20,
+        drop_small_components: 0.01,
+        precluster_max_verts: 20000000,
+      },
+    },
+    'decimate': {
+      class_type: 'DecimateMesh',
+      inputs: { mesh: ['remesh', 0], target_face_count: 700000, placement_mode: 'midpoint' },
+    },
+    'smooth': {
+      class_type: 'MeshSmoothNormals',
+      inputs: { mesh: ['decimate', 0], crease_angle: 180 },
+    },
+    'unwrap': {
+      class_type: 'UnwrapMesh',
+      inputs: {
+        mesh: ['smooth', 0],
+        segmenter: 'pec',
+        resolution: 4096,
+        padding: 1,
+        weld_distance: 0.0002,
+      },
+    },
+    'bake_color': {
+      class_type: 'BakeTextureFromVoxel',
+      inputs: {
+        mesh: ['unwrap', 0],
+        voxel_colors: ['dec_tex', 0],
+        reference_mesh: ['dec_shape', 0],
+        texture_size: 4096,
+      },
+    },
+    'bake_ao': {
+      class_type: 'BakeAmbientOcclusion',
+      inputs: {
+        low_poly: ['unwrap', 0],
+        high_poly: ['remesh', 0],
+        resolution: 1024,
+        samples: 64,
+        max_distance: 0.71,
+        strength: 1,
+        bias: 0.01,
+      },
+    },
+    'bake_normal': {
+      class_type: 'BakeNormalMapFromMesh',
+      inputs: {
+        low_poly: ['unwrap', 0],
+        high_poly: ['remesh', 0],
+        resolution: 2048,
+        cage_distance: 0.05,
+        ignore_backfaces: true,
+      },
+    },
+    'apply': {
+      class_type: 'ApplyTextureToMesh',
+      inputs: {
+        mesh: ['unwrap', 0],
+        base_color: ['bake_color', 0],
+        metallic: ['bake_color', 1],
+        roughness: ['bake_color', 2],
+        occlusion: ['bake_ao', 0],
+        normal_map: ['bake_normal', 0],
+      },
+    },
+    'smooth2': {
+      class_type: 'MeshSmoothNormals',
+      inputs: { mesh: ['apply', 0], crease_angle: 180 },
+    },
+    'mesh_file': {
+      class_type: 'MeshToFile3D',
+      inputs: { mesh: ['smooth2', 0] },
+    },
+    'save': {
+      class_type: 'SaveGLB',
+      inputs: { mesh: ['mesh_file', 0], filename_prefix: `${PREFIX}-3d` },
+    },
+  };
+}
+
 export function buildCustom(params: GenerationParams): Record<string, WorkflowNode> {
   return (params.customWorkflow as Record<string, WorkflowNode>) || {};
 }
@@ -651,6 +1011,8 @@ const templates: Record<Mode, WorkflowTemplate> = {
   img2vid: { name: 'MiniMax H3 (Img2Vid)', mode: 'img2vid', build: buildImg2Vid },
   img_upscale: { name: 'RealESRGAN', mode: 'img_upscale', build: buildImgUpscale },
   vid_upscale: { name: 'SeedVR2', mode: 'vid_upscale', build: buildVidUpscale },
+  text2music: { name: 'MiniMax Music 3', mode: 'text2music', build: buildText2Music },
+  img23d: { name: 'TRELLIS 2 (Img to 3D)', mode: 'img23d', build: buildImg23D },
   custom: { name: 'Custom Workflow', mode: 'custom', build: buildCustom },
 };
 

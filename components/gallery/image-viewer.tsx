@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { VideoPlayer } from '@/components/gallery/video-player';
+import { GlbViewer } from '@/components/gallery/glb-viewer';
 import type { MediaItem } from '@/types/workflow';
 
 interface ImageViewerProps {
@@ -110,9 +111,21 @@ export function ImageViewer({ items, index, onClose, onIndexChange }: ImageViewe
             }}
             className="max-h-full max-w-full select-none"
           />
-        ) : (
+        ) : item.kind === 'video' ? (
           <div className="w-3/4 max-w-2xl">
             <VideoPlayer item={item} />
+          </div>
+        ) : item.kind === 'audio' ? (
+          <div className="w-3/4 max-w-2xl" onClick={(e) => e.stopPropagation()}>
+            <audio src={item.url} controls autoPlay className="w-full" />
+            <p className="mt-3 text-center text-xs text-white/60">{item.filename}</p>
+          </div>
+        ) : (
+          <div className="h-[70vh] w-3/4 max-w-4xl" onClick={(e) => e.stopPropagation()}>
+            <GlbViewer url={item.url} alt={item.filename} className="h-full w-full" />
+            <p className="mt-2 text-center text-xs text-white/60">
+              拖曳旋轉・滾輪縮放（GLB 模型）
+            </p>
           </div>
         )}
       </div>

@@ -1,12 +1,15 @@
 # Super Studio
 
-一個基於 **Next.js 16 + TypeScript + Tailwind CSS** 的 ComfyUI 前端工作台，將本機 ComfyUI 封裝為直觀的圖形界面，支援文生圖、圖生圖、文生影片、圖生影片、圖片/影片放大與自定義工作流。
+一個基於 **Next.js 16 + TypeScript + Tailwind CSS** 的 ComfyUI 前端工作台，將本機 ComfyUI 封裝為直觀的圖形界面，支援文生圖、圖生圖、圖片編輯、文生影片、圖生影片、圖片/影片放大、文生音樂、圖片轉 3D 與自定義工作流。
 
 ## 功能
 
-- **七種生成模式**：文生圖、圖生圖、文生影片、圖生影片、圖片放大、影片放大、自定義工作流
+- **十種生成模式**：文生圖、圖生圖、圖片編輯、文生影片、圖生影片、圖片放大、影片放大、文生音樂、圖片轉 3D、自定義工作流
 - **即時進度回饋**：透過 WebSocket 顯示節點執行進度與即時預覽圖
 - **生成佇列**：批次排隊、重新排序、中斷與載入前一任務參數（`/queue` 頁）
+- **音樂生成**：MiniMax Music 3 依文字描述與歌詞生成完整歌曲，輸出 320k MP3
+- **圖片轉 3D**：TRELLIS 2 管線（去背景 → 結構 → 形狀 → 上採樣 → 紋理 → 重拓樑/UV 展開 → 4K 貼圖烘焙），輸出帶貼圖的 GLB，畫廊可直接以 3D 檢視器旋轉檢視
+- **OpenAI API 相容層**：外部工具可用 OpenAI 格式呼叫生圖能力（詳見〈OpenAI API 相容層〉與站內「API 說明」頁）
 - **LLM 提示詞優化**：接 OpenAI 相容 API（Ollama 等），將口語描述擴充為高品質英文提示詞、或反推參考圖內容（`反推圖片並優化`）
 - **可設定 ComfyUI 地址**：在設定頁配置與測試連線，支援跨主機代理
 - **畫廊與歷史**：生成結果集中管理，可下載、檢視、再次放大
@@ -20,13 +23,13 @@
 | 代理層 | `app/api/comfyui/[...path]/route.ts` 將瀏覽器請求轉發至 ComfyUI（避免 CORS） |
 | LLM 代理 | `app/api/llm/[...path]/route.ts` 轉發 OpenAI 相容 API（提示詞優化／圖反推） |
 | WebSocket | 瀏覽器經 `ws://<host>/ws?clientId=...` 直連，`websocket-manager` 負責重連與事件分發 |
-| 工作流 | `lib/workflow-templates.ts` 依模式生成 API-format 工作流，已對照本機 ComfyUI v0.34 節點簽名驗證 |
+| 工作流 | `lib/workflow-templates.ts` 依模式生成 API-format 工作流，已對照本機 ComfyUI v0.37 節點簽名驗證 |
 | 佇列 | `stores/queue-store.ts` + `app/queue/` 管理多任務排隊、中斷與重載 |
 
 主要資料夾：
 
 ```
-app/            路由頁面（首頁 / settings / history / queue）與 API 代理
+app/            路由頁面（首頁 / settings / history / queue / api-docs）與 API 代理
 components/     UI 元件（workspace / gallery / workflow / settings / layout）
 hooks/          生成、WebSocket、LLM、ComfyUI 連線 hooks
 lib/            client、websocket、工作流模板與解析、LLM、拖放、儲存
@@ -39,11 +42,12 @@ docs/           需求、規格、UI/UX 與開發任務清單
 
 - **Node.js ≥ 20**（本機使用 v20.18.0，安裝於使用者空間）
   - 若 npx/npm 不在 PATH，請先：`export PATH="$HOME/.local/node/bin:$PATH"`
-- **ComfyUI** 於 `127.0.0.1:8188` 執行（本機環境為 v0.34.0），並掛載下列模型：
+- **ComfyUI** 於 `127.0.0.1:8188` 執行（本機環境為 v0.37.4），並掛載下列模型：
 
 | 用途 | 模型檔 |
 |------|--------|
 | 圖片 UNET | `z_image_turbo_bf16.safetensors` |
+| 圖片編輯 UNET（Qwen-Image-2.1） | `qwen_image_2.1_int8_convrot.safetensors`、`qwen3vl_8b_int8_convrot.safetensors`、`qwen_image_2.1_vae_bf16.safetensors` |
 | 影片 UNET | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` |
 | 放大 UNET | `seedvr2_3b_int8_convrot.safetensors` |
 | 圖片 VAE / CLIP | `ae.safetensors`、`qwen_3_4b.safetensors` |
@@ -52,6 +56,13 @@ docs/           需求、規格、UI/UX 與開發任務清單
 | Turbo LoRA | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` |
 | 圖片放大模型 | `RealESRGAN_x4plus.safetensors` |
 | 影片放大 VAE | `seedvr2_ema_vae_fp16.safetensors` |
+| 音樂 DiT | `minimax_music3_dit_fp16.safetensors` |
+| 音樂文字編碼器 | `minimax_music3_text_encoder_pruned_int8_convrot.safetensors` |
+| 音樂 VAE | `minimax_music3_dav.safetensors` |
+| 3D 主模型（TRELLIS 2） | `trellis_2_int8_convrot.safetensors` |
+| 3D 形狀 / 紋理 VAE | `trellis_2_shape_vae_bf16.safetensors`、`trellis_2_texture_vae_bf16.safetensors` |
+| 3D 影像編碼器 | `dino_v3_L_naf_fp32.safetensors` |
+| 3D 去背景模型 | `birefnet.safetensors` |
 
 ## 安裝與執行
 
@@ -81,12 +92,15 @@ npm run dev          # 開發模式（預設 http://localhost:3000）
 
 | 模式 | 需要輸入 |
 |------|----------|
-| 文生圖 | 提示詞、尺寸、步數、seed |
+| 文生圖 | 提示詞、模型（z-image / Qwen-Image-2.1）、尺寸、步數、seed |
 | 圖生圖 | 提示詞 + 來源圖片 + denoise |
+| 圖片編輯 | 來源圖片（最多 10 張）+ 編輯指令 + 解析度 |
 | 文生影片 | 提示詞、解析度、時長（幀數對齊 17k+5 網格）、fps、Turbo 開關 |
 | 圖生影片 | 提示詞 + 首幀（可選尾幀） |
 | 圖片放大 | 來源圖片 + 倍數（2x/4x） |
 | 影片放大 | 來源影片（SeedVR2 工作流） |
+| 文生音樂 | 曲風描述 + 歌詞（可留空）+ 時長、seed（steps/cfg 由模板固定） |
+| 圖片轉 3D | 來源圖片 + seed（不需提示詞；管線參數固定） |
 | 自定義 | 上傳 API/UI-format JSON 或從模板開始 |
 
 ## OpenAI API 相容層（給外部工具使用）
@@ -98,6 +112,8 @@ npm run dev          # 開發模式（預設 http://localhost:3000）
 | `GET /api/openai/v1/models` | 列出可用模型（`z-image`、`qwen-image-2.1`） |
 | `POST /api/openai/v1/images/generations` | 文生圖（JSON body） |
 | `POST /api/openai/v1/images/edits` | 圖生圖／圖片編輯（multipart form，欄位 `image` 可多張） |
+
+> 站內說明頁：啟動後開啟 `/api-docs`（左欄底部「API 說明」），內含完整參數表、curl 範例與錯誤碼。
 
 ```bash
 # 文生圖
@@ -116,6 +132,7 @@ curl -X POST http://<host>:3000/api/openai/v1/images/edits \
 - 逾時預設 600 秒，可用 `OPENAI_COMPAT_TIMEOUT_MS` 環境變數調整。
 - 端點預設無驗證（適合內網）；若要公開暴露，請在前方加反向代理與驗證。
 - 實作位於 `lib/openai-compat.ts` 與 `app/api/openai/v1/`，工作流直接複用 `lib/workflow-templates.ts`。
+- **涵蓋範圍**：目前僅提供文生圖與圖片編輯。影片、放大、文生音樂、圖片轉 3D 等模式尚未開放 OpenAI 相容端點，請直接在工作台操作。
 
 ## 常用指令
 
@@ -132,16 +149,20 @@ npm start           # 執行 production 伺服器
 |-----------|------|
 | `app/settings/` | ComfyUI 地址、LLM 設定、主題、系統資訊（設定會存於瀏覽器 localStorage） |
 | `app/queue/` | 生成佇列管理（順序、中斷、載入參數） |
+| `app/api-docs/` | 站內 OpenAI 相容 API 說明頁（參數表、範例、錯誤碼） |
 | `lib/workflow-templates.ts` | 各模式工作流構建（如需對照新環境節點請依該環境 `object_info` 修正） |
 | `lib/llm-client.ts` / `lib/prompt-optimizer.ts` | LLM 提示詞優化與圖片反推 |
 | `docs/todolist.md` | 開發任務清單（含各項目完成判定） |
 
 ## 已知注意事項
 
-- 幀數公式：`17k + 5`（ComfyUI 影片工作流要求），124 幀約 5 秒。
+- 幀數公式：`17k + 5`（ComfyUI 影片工作流要求），124 幀約 5 秒（`lib/workflow-templates.ts:frameCountForDuration`）。
 - 影片 `SaveVideo` 的 format 使用 dynamic combo 的 `auto`，勿指定固定 mime。
-- 影片 `CLIPLoader` 的 `type` 為 `minimax`（非 `qwen3_vl`）。
-- 工作流已依本機 v0.34 節點簽名實測驗證（`node_errors` 為空）；若升級 ComfyUI，請以 `/object_info` 重新比對。
+- 影片與音樂 `CLIPLoader` 的 `type` 為 `minimax`（非 `qwen3_vl`）。
+- 音樂輸出為 `SaveAudioMP3`（`320k`）；歷史輸出的 key 為 `audio`。
+- 3D 管線的 `RemeshMesh` 除了主要輸入外，還需帶 `sign_mode.qef`、`sign_mode.drop_inverted_components`、`sign_mode.drop_enclosed_components` 三個子輸入，缺少會被 ComfyUI 以 `node_errors` 拒絕。
+- 3D 輸出為 `SaveGLB`（4K 貼圖，檔案可達數十 MB），歷史輸出的 key 為 `3d`；`GetMeshInfo` 的 `mesh_info.text` 非媒體輸出，不納入畫廊。
+- 工作流已依本機 v0.37 節點簽名實測驗證（`node_errors` 為空）；若升級 ComfyUI，請以 `/object_info` 重新比對。
 
 ## License / 備註
 

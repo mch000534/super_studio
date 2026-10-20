@@ -18,6 +18,16 @@ export const MODES: ModeMeta[] = [
   { id: 'img2vid', label: '圖生影片', description: '以首幀圖片生成影片' },
   { id: 'img_upscale', label: '圖片放大', description: '放大圖片解析度' },
   { id: 'vid_upscale', label: '影片放大', description: '放大影片解析度與畫質' },
+  {
+    id: 'text2music',
+    label: '文生音樂',
+    description: '以文字描述曲風與歌詞生成完整歌曲（MiniMax Music 3，輸出 MP3）',
+  },
+  {
+    id: 'img23d',
+    label: '圖片轉 3D',
+    description: '以圖片生成帶貼圖的 3D 模型（TRELLIS 2，含去背景、重拓樑與 UV 烘焙，輸出 GLB）',
+  },
   { id: 'custom', label: '自定義', description: '上傳並執行自定義工作流' },
 ];
 

@@ -14,6 +14,10 @@ import { UpscaleControls } from '@/components/workspace/upscale-controls';
 import { CustomWorkflowPanel } from '@/components/workflow/custom-workflow-panel';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dices } from 'lucide-react';
 import { useGeneration, setResultHandler } from '@/hooks/use-generation';
 import { useSettingsStore } from '@/stores/settings-store';
 import { useGalleryStore } from '@/stores/gallery-store';
@@ -128,11 +132,158 @@ function PanelContent({
       return <ImgUpscaleControls onInterrupt={onInterrupt} />;
     case 'vid_upscale':
       return <VidUpscaleControls onInterrupt={onInterrupt} />;
+    case 'text2music':
+      return <Text2MusicControls onInterrupt={onInterrupt} />;
+    case 'img23d':
+      return <Img23DControls onInterrupt={onInterrupt} />;
     case 'custom':
       return <CustomWorkflowPanel />;
     default:
       return null;
   }
+}
+
+function SeedRow() {
+  const params = useGenerationStore((s) => s.params);
+  const updateParams = useGenerationStore((s) => s.updateParams);
+
+  return (
+    <div className="space-y-1.5">
+      <Label>Seed</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          value={params.seed}
+          onChange={(e) => updateParams({ seed: Number(e.target.value) })}
+          className="font-mono"
+        />
+        <button
+          onClick={() => updateParams({ seed: Math.floor(Math.random() * 1_000_000_000) })}
+          className="rounded-md border p-2 text-muted-foreground hover:text-foreground"
+          title="隨機 Seed"
+        >
+          <Dices className="h-4 w-4" />
+        </button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {params.seed === -1 ? '每次生成將自動使用隨機種子' : 'seed 為 -1 時自動使用隨機種子'}
+      </p>
+    </div>
+  );
+}
+
+function Text2MusicControls({ onInterrupt }: { onInterrupt: () => void }) {
+  const params = useGenerationStore((s) => s.params);
+  const updateParams = useGenerationStore((s) => s.updateParams);
+  const { submit } = useGeneration();
+
+  const duration = Math.min(300, Math.max(5, params.duration ?? 60));
+
+  return (
+    <div className="space-y-5">
+      <PromptPanel placeholder="描述曲風、樂器、節奏與氛圍（例：lo-fi hip hop, warm piano, 80 BPM）…" />
+      <div className="space-y-1.5">
+        <Label>歌詞</Label>
+        <Textarea
+          value={params.lyrics ?? ''}
+          onChange={(e) => updateParams({ lyrics: e.target.value })}
+          placeholder={'留空＝純音樂（instrumental）\n\nRain against the window\nCity lights softly glow…'}
+          rows={6}
+        />
+        <p className="text-xs text-muted-foreground">
+          歌詞以換行分段（每段一首詩句）；留空則生成純音樂。
+        </p>
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">時長（秒）</span>
+          <span className="font-mono text-xs text-muted-foreground">{duration}</span>
+        </div>
+        <Slider
+          min={5}
+          max={300}
+          step={5}
+          value={[duration]}
+          onValueChange={([v]) => updateParams({ duration: v })}
+        />
+      </div>
+      <SeedRow />
+      <Separator />
+      <GenerationControls
+        onGenerate={() => submit()}
+        onInterrupt={onInterrupt}
+        label="生成音樂"
+        disabled={!params.prompt.trim()}
+      />
+      {!params.prompt.trim() && (
+        <p className="text-xs text-muted-foreground">請先輸入曲風描述再生成</p>
+      )}
+    </div>
+  );
+}
+
+function Img23DControls({ onInterrupt }: { onInterrupt: () => void }) {
+  const { comfyuiHost, authHeader } = useSettingsStore();
+  const params = useGenerationStore((s) => s.params);
+  const updateParams = useGenerationStore((s) => s.updateParams);
+  const { submit } = useGeneration();
+
+  const handleUpload = async (file: File) => {
+    const r = await comfyuiClient.uploadImage(file, comfyuiHost, authHeader);
+    if (r.ok) {
+      updateParams({ imageName: r.data.name });
+      return r.data.name;
+    }
+    throw new Error(r.error.message);
+  };
+
+  const handleSourceSelect = async (item: MediaItem) => {
+    if (item.kind !== 'image') return;
+    const r = await ensureInputRef(item, comfyuiHost, authHeader);
+    if (r.ok) {
+      updateParams({ imageName: r.name });
+      if (item.type !== 'input' || item.subfolder) {
+        toast({ title: '已轉為參考影像', description: '來源圖片已上傳至 ComfyUI input' });
+      }
+      return;
+    }
+    toast({ variant: 'destructive', title: '選取失敗', description: r.message });
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-1.5">
+        <span className="text-xs text-muted-foreground">可從上方畫廊拖曳圖片至此作為來源</span>
+        <ImageUpload
+          label="要轉成 3D 的圖片"
+          value={params.imageName ?? null}
+          onChange={(data) => {
+            if (!data) updateParams({ imageName: undefined });
+          }}
+          onUpload={handleUpload}
+          onGalleryDrop={handleSourceSelect}
+        />
+        <p className="text-xs text-muted-foreground">
+          建議使用背景乾淨、主體完整的圖片（會自動去背景並裁切為方形）。
+        </p>
+      </div>
+      <SeedRow />
+      <Separator />
+      <GenerationControls
+        onGenerate={() => submit()}
+        onInterrupt={onInterrupt}
+        label="生成 3D 模型"
+        disabled={!params.imageName}
+      />
+      {!params.imageName && (
+        <p className="text-xs text-muted-foreground">請先上傳或從畫廊拖曳圖片再生成</p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        完整管線：去背景 → TRELLIS 2 結構／形狀／紋理生成 → 重拓樑 → 4K UV
+        貼圖烘焙，需數分鐘，完成後輸出帶貼圖的 GLB 檔。
+      </p>
+    </div>
+  );
 }
 
 function Img2ImgControls({ onInterrupt }: { onInterrupt: () => void }) {
