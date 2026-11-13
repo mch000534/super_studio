@@ -7,6 +7,7 @@
 - **十種生成模式**：文生圖、圖生圖、圖片編輯、文生影片、圖生影片、圖片放大、影片放大、文生音樂、圖片轉 3D、自定義工作流
 - **即時進度回饋**：透過 WebSocket 顯示節點執行進度與即時預覽圖
 - **生成佇列**：批次排隊、重新排序、中斷與載入前一任務參數（`/queue` 頁）
+- **影片生成**：文生／圖生影片可選 MiniMax H3（標準／Turbo）或 FastVideo FastH3（8 步蒸餾 + VSA 稀疏注意力），輸出含同步音訊的 MP4
 - **音樂生成**：MiniMax Music 3 依文字描述與歌詞生成完整歌曲，輸出 320k MP3
 - **圖片轉 3D**：TRELLIS 2 管線（去背景 → 結構 → 形狀 → 上採樣 → 紋理 → 重拓樑/UV 展開 → 4K 貼圖烘焙），輸出帶貼圖的 GLB，畫廊可直接以 3D 檢視器旋轉檢視
 - **OpenAI API 相容層**：外部工具可用 OpenAI 格式呼叫生圖能力（詳見〈OpenAI API 相容層〉與站內「API 說明」頁）
@@ -48,12 +49,14 @@ docs/           需求、規格、UI/UX 與開發任務清單
 |------|--------|
 | 圖片 UNET | `z_image_turbo_bf16.safetensors` |
 | 圖片編輯 UNET（Qwen-Image-2.1） | `qwen_image_2.1_int8_convrot.safetensors`、`qwen3vl_8b_int8_convrot.safetensors`、`qwen_image_2.1_vae_bf16.safetensors` |
-| 影片 UNET | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` |
+| 影片 UNET（MiniMax H3） | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` |
+| 影片 UNET（FastVideo FastH3） | `fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors` |
 | 放大 UNET | `seedvr2_3b_int8_convrot.safetensors` |
 | 圖片 VAE / CLIP | `ae.safetensors`、`qwen_3_4b.safetensors` |
-| 影片 VAE | `minimax_h3_video_vae_fp16.safetensors`、`minimax_h3_audio_vae_fp32.safetensors` |
+| 影片 VAE（MiniMax H3） | `minimax_h3_video_vae_fp16.safetensors`、`minimax_h3_audio_vae_fp32.safetensors` |
+| 影片 VAE（FastH3） | `minimax_h3_video_vae_int8_convrot.safetensors`、`minimax_h3_audio_vae_fp32.safetensors` |
 | 影片 CLIP | `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` |
-| Turbo LoRA | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` |
+| Turbo LoRA（MiniMax H3） | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` |
 | 圖片放大模型 | `RealESRGAN_x4plus.safetensors` |
 | 影片放大 VAE | `seedvr2_ema_vae_fp16.safetensors` |
 | 音樂 DiT | `minimax_music3_dit_fp16.safetensors` |
@@ -95,8 +98,8 @@ npm run dev          # 開發模式（預設 http://localhost:3000）
 | 文生圖 | 提示詞、模型（z-image / Qwen-Image-2.1）、尺寸、步數、seed |
 | 圖生圖 | 提示詞 + 來源圖片 + denoise |
 | 圖片編輯 | 來源圖片（最多 10 張）+ 編輯指令 + 解析度 |
-| 文生影片 | 提示詞、解析度、時長（幀數對齊 17k+5 網格）、fps、Turbo 開關 |
-| 圖生影片 | 提示詞 + 首幀（可選尾幀） |
+| 文生影片 | 提示詞、影片模型（MiniMax H3 標準／Turbo、FastVideo FastH3）、解析度、時長（幀數對齊 17k+5 網格）、fps |
+| 圖生影片 | 提示詞 + 首幀（可選尾幀）+ 影片模型（同上） |
 | 圖片放大 | 來源圖片 + 倍數（2x/4x） |
 | 影片放大 | 來源影片（SeedVR2 工作流） |
 | 文生音樂 | 曲風描述 + 歌詞（可留空）+ 時長、seed（steps/cfg 由模板固定） |
@@ -234,6 +237,8 @@ npm start           # 執行 production 伺服器
 ## 已知注意事項
 
 - 幀數公式：`17k + 5`（ComfyUI 影片工作流要求），124 幀約 5 秒（`lib/workflow-templates.ts:frameCountForDuration`）。
+- FastVideo FastH3 走 `SamplerCustomAdvanced` + `MiniMaxH3SigmaShift` + `ModelAttentionBackend` + `BlockSparseAttention`（`selection=vsa`），固定 8 步、`res_multistep`/`simple`，無 Turbo LoRA；寬高會對齊 32 的倍數。需 ComfyUI 具備 `comfy kitchen attention` 後端與相關節點（`lib/video-models.ts`）。
+- 影片模型家族定義於 `lib/video-models.ts`（MiniMax H3、FastVideo FastH3）；切換模型時 `video-controls.tsx` 會清空自訂檔名，讓新模型的預設值生效。
 - 影片 `SaveVideo` 的 format 使用 dynamic combo 的 `auto`，勿指定固定 mime。
 - 影片與音樂 `CLIPLoader` 的 `type` 為 `minimax`（非 `qwen3_vl`）。
 - 音樂輸出為 `SaveAudioMP3`（`320k`）；歷史輸出的 key 為 `audio`。

@@ -1,6 +1,7 @@
 import type { GenerationParams, Mode } from '@/types/workflow';
 import type { WorkflowNode } from '@/types/comfyui';
 import { getImageModelFamily } from '@/lib/image-models';
+import { getVideoModelFamily } from '@/lib/video-models';
 
 export interface WorkflowTemplate {
   name: string;
@@ -22,47 +23,46 @@ export function frameCountForDuration(seconds: number): number {
 
 function baseVideoNodes(params: GenerationParams): Record<string, WorkflowNode> {
   const { unetName, clipName, vaeName, audioVaeName } = params;
+  const family = getVideoModelFamily(params.videoModelId);
   return {
     '1': {
       class_type: 'UNETLoader',
       inputs: {
-        unet_name:
-          unetName || 'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+        unet_name: unetName || family.defaults.unetName,
         weight_dtype: 'default',
       },
     },
     '2': {
       class_type: 'CLIPLoader',
       inputs: {
-        clip_name: clipName || 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
+        clip_name: clipName || family.defaults.clipName,
         type: 'minimax',
       },
     },
     '3': {
       class_type: 'VAELoader',
-      inputs: { vae_name: vaeName || 'minimax_h3_video_vae_fp16.safetensors' },
+      inputs: { vae_name: vaeName || family.defaults.vaeName },
     },
     '4': {
       class_type: 'VAELoader',
-      inputs: { vae_name: audioVaeName || 'minimax_h3_audio_vae_fp32.safetensors' },
+      inputs: { vae_name: audioVaeName || family.defaults.audioVaeName },
     },
   };
 }
 
 function audioToVideoNodes(
-  modelRef: unknown,
-  framesNodeId: string,
+  samplesNodeId: string,
   params: GenerationParams
 ): Record<string, WorkflowNode> {
   const fps = params.fps ?? 24;
   return {
     'vae_decode': {
       class_type: 'VAEDecode',
-      inputs: { samples: ['ks_turbo', 0], vae: ['3', 0] },
+      inputs: { samples: [samplesNodeId, 0], vae: ['3', 0] },
     },
     'vae_decode_audio': {
       class_type: 'VAEDecodeAudio',
-      inputs: { samples: ['ks_turbo', 0], vae: ['4', 0] },
+      inputs: { samples: [samplesNodeId, 0], vae: ['4', 0] },
     },
     'create_video': {
       class_type: 'CreateVideo',
@@ -79,7 +79,110 @@ function audioToVideoNodes(
   };
 }
 
+/** 對齊到 32 的倍數（ComfyUI 影像尺寸需求）。 */
+function snap32(n: number): number {
+  return Math.min(4096, Math.max(32, Math.round(n / 32) * 32));
+}
+
+/**
+ * FastVideo FastH3：DMD2 蒸餾 8 步模型，使用 VSA 稀疏注意力。
+ * 依官方 ComfyUI 範本（First Last Frame to Video）組圖：
+ * UNETLoader → MiniMaxH3SigmaShift → ModelAttentionBackend → BlockSparseAttention
+ *   → BasicScheduler / BasicGuider → SamplerCustomAdvanced → VAEDecode(+Audio)
+ *   → CreateVideo → SaveVideo
+ */
+function buildFastH3VideoWorkflow(
+  params: GenerationParams,
+  withFrames: boolean
+): Record<string, WorkflowNode> {
+  const nodes = baseVideoNodes(params);
+  const width = snap32(params.width);
+  const height = snap32(params.height);
+  const length = frameCountForDuration(params.duration ?? 5);
+
+  nodes['sigma_shift'] = {
+    class_type: 'MiniMaxH3SigmaShift',
+    inputs: { model: ['1', 0], shift_video: 10, shift_audio: 3 },
+  } as WorkflowNode;
+
+  nodes['attn_backend'] = {
+    class_type: 'ModelAttentionBackend',
+    inputs: { model: ['sigma_shift', 0], attention: 'comfy kitchen attention' },
+  } as WorkflowNode;
+
+  nodes['sparse_attn'] = {
+    class_type: 'BlockSparseAttention',
+    inputs: {
+      model: ['attn_backend', 0],
+      selection: 'vsa',
+      'selection.keep_percent': 10,
+      start_percent: 0.2,
+      end_percent: 1,
+      dense_blocks: '',
+      min_tokens: 12288,
+      extra_tokens: 256,
+      sink_conditioning: 'exact_kv_and_rows',
+      verbose: false,
+    },
+  } as WorkflowNode;
+
+  const h3Inputs: Record<string, unknown> = {
+    clip: ['2', 0],
+    vae: ['3', 0],
+    prompt: params.prompt,
+    width,
+    height,
+    length,
+  };
+  if (withFrames) {
+    if (params.firstFrameName) h3Inputs['first_frame'] = ['load_first', 0];
+    if (params.lastFrameName) h3Inputs['last_frame'] = ['load_last', 0];
+  }
+  nodes['h3'] = {
+    class_type: 'MiniMaxH3ImageToVideo',
+    inputs: h3Inputs,
+  } as WorkflowNode;
+
+  nodes['scheduler'] = {
+    class_type: 'BasicScheduler',
+    inputs: { model: ['sparse_attn', 0], scheduler: 'simple', steps: 8, denoise: 1 },
+  } as WorkflowNode;
+
+  nodes['guider'] = {
+    class_type: 'BasicGuider',
+    inputs: { model: ['sparse_attn', 0], conditioning: ['h3', 0] },
+  } as WorkflowNode;
+
+  nodes['sampler_select'] = {
+    class_type: 'KSamplerSelect',
+    inputs: { sampler_name: 'res_multistep' },
+  } as WorkflowNode;
+
+  nodes['noise'] = {
+    class_type: 'RandomNoise',
+    inputs: { noise_seed: resolveSeed(params.seed) },
+  } as WorkflowNode;
+
+  nodes['sampler'] = {
+    class_type: 'SamplerCustomAdvanced',
+    inputs: {
+      noise: ['noise', 0],
+      guider: ['guider', 0],
+      sampler: ['sampler_select', 0],
+      sigmas: ['scheduler', 0],
+      latent_image: ['h3', 1],
+    },
+  } as WorkflowNode;
+
+  Object.assign(nodes, audioToVideoNodes('sampler', params));
+  return nodes;
+}
+
 function buildVideoWorkflow(params: GenerationParams, withFrames: boolean): Record<string, WorkflowNode> {
+  if (getVideoModelFamily(params.videoModelId).id === 'fastvideo-fasth3') {
+    return buildFastH3VideoWorkflow(params, withFrames);
+  }
+
   const frames = frameCountForDuration(params.duration ?? 5);
   const turbo = params.turboMode ?? false;
   const steps = turbo ? 8 : 20;
@@ -139,7 +242,7 @@ function buildVideoWorkflow(params: GenerationParams, withFrames: boolean): Reco
     },
   } as WorkflowNode;
 
-  Object.assign(nodes, audioToVideoNodes(modelRef, h3NodeId, params));
+  Object.assign(nodes, audioToVideoNodes('ks_turbo', params));
   return nodes;
 }
 
@@ -1007,8 +1110,12 @@ const templates: Record<Mode, WorkflowTemplate> = {
   text2img: { name: 'Text to Image', mode: 'text2img', build: buildText2Img },
   img2img: { name: 'Z-Image-Turbo (Img2Img)', mode: 'img2img', build: buildImg2Img },
   img_edit: { name: 'Qwen-Image-2.1 (Image Edit)', mode: 'img_edit', build: buildQwenImage21Edit },
-  text2vid: { name: 'MiniMax H3', mode: 'text2vid', build: buildText2Vid },
-  img2vid: { name: 'MiniMax H3 (Img2Vid)', mode: 'img2vid', build: buildImg2Vid },
+  text2vid: { name: 'MiniMax H3 / FastVideo FastH3', mode: 'text2vid', build: buildText2Vid },
+  img2vid: {
+    name: 'MiniMax H3 / FastVideo FastH3 (Img2Vid)',
+    mode: 'img2vid',
+    build: buildImg2Vid,
+  },
   img_upscale: { name: 'RealESRGAN', mode: 'img_upscale', build: buildImgUpscale },
   vid_upscale: { name: 'SeedVR2', mode: 'vid_upscale', build: buildVidUpscale },
   text2music: { name: 'MiniMax Music 3', mode: 'text2music', build: buildText2Music },

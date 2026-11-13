@@ -14,8 +14,16 @@ export const MODES: ModeMeta[] = [
     label: '圖片編輯',
     description: '上傳最多 10 張參考圖，以文字指令編輯（image1 為編輯目標；支援 <image1>、<image2>… 引用）',
   },
-  { id: 'text2vid', label: '文生影片', description: '以文字提示詞生成影片' },
-  { id: 'img2vid', label: '圖生影片', description: '以首幀圖片生成影片' },
+  {
+    id: 'text2vid',
+    label: '文生影片',
+    description: '以文字提示詞生成影片（MiniMax H3／FastVideo FastH3，含音訊）',
+  },
+  {
+    id: 'img2vid',
+    label: '圖生影片',
+    description: '以首幀（可選尾幀）圖片生成影片（MiniMax H3／FastVideo FastH3，含音訊）',
+  },
   { id: 'img_upscale', label: '圖片放大', description: '放大圖片解析度' },
   { id: 'vid_upscale', label: '影片放大', description: '放大影片解析度與畫質' },
   {

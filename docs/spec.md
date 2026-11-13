@@ -257,12 +257,26 @@ KSampler.denoise = 用戶設定的 denoise(0~1)
 UNETLoader + LoraLoader(選用) → 模型開關(turbo)
 CLIPLoader(qwen3vl) + VAELoader(影像/音訊)
 MiniMaxH3ImageToVideo(圖片節點) → conditioning + latent
-SamplerCustomAdvanced → VAEDecode → VAEDecodeAudio → CreateVideo → SaveVideo
+KSampler → VAEDecode → VAEDecodeAudio → CreateVideo → SaveVideo
 ```
 - 時長秒 → 幀數公式：`max(5, round(s*24))` 對齊到 `17k+5` 格。
-- Turbo 模式：改用 LoRA + 較少步驟；非 Turbo：基礎模型 + 較多步驟。
+- Turbo 模式：改用 LoRA + 較少步驟（8）；非 Turbo：基礎模型 + 較多步驟（20）。
 - 圖生視頻需 `first_frame`（+ 選用 `last_frame`）。
 - **輸出為影片檔**，SaveVideo 產出 MP4，存於 `output/video/`。
+
+**文生/圖生視頻（FastVideo FastH3，`videoModelId='fastvideo-fasth3'`）**
+```
+UNETLoader(fasth3) → MiniMaxH3SigmaShift(10/3) → ModelAttentionBackend(comfy kitchen)
+  → BlockSparseAttention(selection=vsa, keep_percent=10, start 0.2, end 1)
+CLIPLoader(qwen3vl) + VAELoader(影像 int8/音訊 fp32)
+MiniMaxH3ImageToVideo(圖片節點) → conditioning + latent
+BasicScheduler(8, simple) + BasicGuider + KSamplerSelect(res_multistep) + RandomNoise
+  → SamplerCustomAdvanced → VAEDecode → VAEDecodeAudio → CreateVideo → SaveVideo
+```
+- 依官方 ComfyUI 範本「First Last Frame to Video (FastVideo FastH3)」組圖，固定 8 步、無 Turbo LoRA。
+- 寬高對齊 32 的倍數；幀數公式同上（`17k+5`）。
+- 模型檔名、固定值集中於 `lib/video-models.ts`（`fastvideo-fasth3` 家族）。
+- 需 ComfyUI 具備 `MiniMaxH3SigmaShift`、`ModelAttentionBackend`、`BlockSparseAttention` 與 `comfy kitchen attention` 後端。
 
 **圖片放大（RealESRGAN）**
 ```

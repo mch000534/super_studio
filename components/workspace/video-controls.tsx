@@ -23,6 +23,23 @@ const RESOLUTIONS = [
 export function VideoControls({ showTurbo = true }: { showTurbo?: boolean }) {
   const params = useGenerationStore((s) => s.params);
   const updateParams = useGenerationStore((s) => s.updateParams);
+  const isFastH3 = params.videoModelId === 'fastvideo-fasth3';
+
+  const onModelChange = (v: string) => {
+    // 切換模型時清空自訂檔名，讓新模型的預設值生效
+    const reset = {
+      unetName: undefined,
+      clipName: undefined,
+      vaeName: undefined,
+      audioVaeName: undefined,
+      loraName: undefined,
+    };
+    if (v === 'fasth3') {
+      updateParams({ ...reset, videoModelId: 'fastvideo-fasth3', turboMode: false });
+    } else {
+      updateParams({ ...reset, videoModelId: 'minimax-h3', turboMode: v === 'turbo' });
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -87,8 +104,8 @@ export function VideoControls({ showTurbo = true }: { showTurbo?: boolean }) {
       <div className="space-y-1.5">
         <Label>影片模型</Label>
         <Select
-          value={params.turboMode ? 'turbo' : 'standard'}
-          onValueChange={(v) => updateParams({ turboMode: v === 'turbo' })}
+          value={isFastH3 ? 'fasth3' : params.turboMode ? 'turbo' : 'standard'}
+          onValueChange={onModelChange}
         >
           <SelectTrigger>
             <SelectValue />
@@ -96,11 +113,17 @@ export function VideoControls({ showTurbo = true }: { showTurbo?: boolean }) {
           <SelectContent>
             <SelectItem value="standard">MiniMax H3（標準）</SelectItem>
             <SelectItem value="turbo">MiniMax H3（Turbo）</SelectItem>
+            <SelectItem value="fasth3">FastVideo FastH3（8 步）</SelectItem>
           </SelectContent>
         </Select>
+        {isFastH3 && (
+          <p className="text-xs text-muted-foreground">
+            FastH3 為 8 步蒸餾模型，使用 VSA 稀疏注意力；需 ComfyUI 支援相關節點。
+          </p>
+        )}
       </div>
 
-      {showTurbo && (
+      {showTurbo && !isFastH3 && (
         <div className="flex items-center justify-between">
           <Label>TURBO</Label>
           <Switch

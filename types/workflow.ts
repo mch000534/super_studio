@@ -50,6 +50,7 @@ export interface GenerationParams {
   duration?: number;
   fps?: number;
   turboMode?: boolean;
+  videoModelId?: 'minimax-h3' | 'fastvideo-fasth3';
   loraName?: string;
   firstFrameName?: string;
   lastFrameName?: string;
