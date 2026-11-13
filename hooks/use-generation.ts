@@ -8,6 +8,10 @@ import { buildWorkflow } from '@/lib/workflow-templates';
 import type { Mode, MediaItem, GenerationParams } from '@/types/workflow';
 import type { FileInfo } from '@/types/comfyui';
 
+// ComfyUI 的 SaveVideo 會把 MP4 放在 outputs.images（並附 animated 標記），
+// 需依副檔名改判為 video，否則畫廊會以 <img> 渲染影片。
+const VIDEO_EXT = /\.(mp4|webm|mov|mkv|avi)$/i;
+
 const NODE_NAMES: Record<string, string> = {
   KSampler: 'KSampler',
   CLIPTextEncode: '正/負向提示詞編碼',
@@ -262,11 +266,13 @@ export function useGeneration() {
           Object.values(entry.outputs || {}).forEach((output) => {
             const collect = (files: FileInfo[] | undefined, kind: MediaItem['kind']) => {
               (files || []).forEach((f) => {
+                const resolvedKind: MediaItem['kind'] =
+                  kind === 'image' && VIDEO_EXT.test(f.filename) ? 'video' : kind;
                 media.push({
                   filename: f.filename,
                   subfolder: f.subfolder,
                   type: f.type,
-                  kind,
+                  kind: resolvedKind,
                   url: comfyuiClient.getViewUrl(f.filename, host, f.subfolder, f.type, {
                     authHeader,
                   }),
