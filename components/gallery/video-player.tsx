@@ -6,9 +6,11 @@ import type { MediaItem } from '@/types/workflow';
 
 interface VideoPlayerProps {
   item: MediaItem;
+  /** 影片顯示尺寸限制（在檢視器內傳入，讓影片以原生尺寸、受可用空間約束的方式顯示） */
+  videoClassName?: string;
 }
 
-export function VideoPlayer({ item }: VideoPlayerProps) {
+export function VideoPlayer({ item, videoClassName = 'w-full' }: VideoPlayerProps) {
   const ref = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -35,7 +37,7 @@ export function VideoPlayer({ item }: VideoPlayerProps) {
       <video
         ref={ref}
         src={item.url}
-        className="w-full"
+        className={videoClassName}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onTimeUpdate={() => {

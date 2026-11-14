@@ -129,8 +129,16 @@ export function ImageViewer({ items, index, onClose, onIndexChange }: ImageViewe
             className="max-h-full max-w-full select-none"
           />
         ) : item.kind === 'video' ? (
-          <div className="w-3/4 max-w-2xl" onClick={(e) => e.stopPropagation()}>
-            <VideoPlayer item={item} />
+          <div
+            className="flex max-h-full max-w-full flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 以影片原生尺寸顯示，僅受檢視器可用空間限制（扣掉頂欄/底欄/控制列），
+                不再以 max-w-2xl 壓縮，否則放大後的影片無法以原尺寸檢視 */}
+            <VideoPlayer
+              item={item}
+              videoClassName="max-h-[calc(100vh-13rem)] max-w-full object-contain"
+            />
           </div>
         ) : item.kind === 'audio' ? (
           <div className="w-3/4 max-w-2xl" onClick={(e) => e.stopPropagation()}>
