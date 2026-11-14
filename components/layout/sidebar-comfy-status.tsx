@@ -57,7 +57,8 @@ export function SidebarComfyStatus() {
     return unsub;
   }, []);
 
-  // 連線後抓取 system_stats，並每 30 秒刷新（VRAM 用量）
+  // 連線後抓取 system_stats 並持續輪詢：閒置 5 秒、GPU 執行中 2 秒；
+  // gpuBusy 切換時依賴變動重跑 effect，即時刷新一次（執行開始／結束瞬間的 VRAM 變化）。
   useEffect(() => {
     if (!isConnected) return;
     let alive = true;
@@ -68,12 +69,12 @@ export function SidebarComfyStatus() {
       });
     };
     fetchStats();
-    const timer = setInterval(fetchStats, 30_000);
+    const timer = setInterval(fetchStats, gpuBusy ? 2_000 : 5_000);
     return () => {
       alive = false;
       clearInterval(timer);
     };
-  }, [isConnected, host, authHeader]);
+  }, [isConnected, host, authHeader, gpuBusy]);
 
   const device = stats?.devices?.[0];
   const vramTotal = device?.vram_total || 0;
