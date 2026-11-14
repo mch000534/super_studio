@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Cpu, MemoryStick, Server } from 'lucide-react';
+import { Activity, Cpu, MemoryStick, Server } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { comfyuiClient } from '@/lib/comfyui-client';
 import { useComfyUI } from '@/hooks/use-comfyui';
 import { useSettingsStore } from '@/stores/settings-store';
+import { getWebSocketManager } from '@/lib/websocket-manager';
 import type { ComfyUISystemStats } from '@/types/comfyui';
 import type { WSConnectionStatus } from '@/lib/websocket-manager';
 
@@ -32,6 +33,30 @@ export function SidebarComfyStatus() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // GPU 執行狀態：ComfyUI API 不提供 GPU 計算使用率，
+  // 以 WebSocket 執行事件推導「執行中（忙碌）/ 閒置」。
+  const [gpuBusy, setGpuBusy] = useState(false);
+  useEffect(() => {
+    const unsub = getWebSocketManager().onEvent((event) => {
+      switch (event.type) {
+        case 'execution_start':
+        case 'progress':
+          setGpuBusy(true);
+          break;
+        case 'executing':
+          // node === null 代表該 prompt 執行完畢
+          setGpuBusy((event.data as { node?: unknown }).node != null);
+          break;
+        case 'execution_success':
+        case 'execution_error':
+        case 'execution_interrupted':
+          setGpuBusy(false);
+          break;
+      }
+    });
+    return unsub;
+  }, []);
+
   // 連線後抓取 system_stats，並每 30 秒刷新（VRAM 用量）
   useEffect(() => {
     if (!isConnected) return;
@@ -55,6 +80,12 @@ export function SidebarComfyStatus() {
   const vramFree = device?.vram_free || 0;
   const vramUsed = vramTotal - vramFree;
   const vramPct = vramTotal > 0 ? Math.round((vramUsed / vramTotal) * 100) : 0;
+  // 系統 RAM（ComfyUI ≥ 0.3x 的 system_stats 才有）
+  const ramTotal = stats?.system?.ram_total || 0;
+  const ramFree = stats?.system?.ram_free ?? -1;
+  const ramKnown = ramTotal > 0 && ramFree >= 0;
+  const ramUsed = ramKnown ? ramTotal - ramFree : 0;
+  const ramPct = ramKnown ? Math.round((ramUsed / ramTotal) * 100) : 0;
   const hostDisplay = mounted
     ? host
       ? host.replace(/^https?:\/\//, '')
@@ -99,6 +130,21 @@ export function SidebarComfyStatus() {
               {device.name}
             </span>
           </div>
+          <div
+            className="mt-1.5 flex items-center gap-2 text-muted-foreground"
+            title="ComfyUI API 不提供 GPU 計算使用率，此為執行狀態（生成中＝忙碌）"
+          >
+            <Activity className={cn('h-3.5 w-3.5 shrink-0', gpuBusy && 'animate-pulse text-success')} />
+            <span className="truncate">GPU 使用率</span>
+            <span
+              className={cn(
+                'ml-auto shrink-0 font-mono',
+                gpuBusy ? 'text-success' : 'text-muted-foreground'
+              )}
+            >
+              {gpuBusy ? '執行中' : '閒置'}
+            </span>
+          </div>
           <div className="mt-1.5 space-y-1">
             <div className="flex items-center gap-2 text-muted-foreground">
               <MemoryStick className="h-3.5 w-3.5 shrink-0" />
@@ -114,6 +160,23 @@ export function SidebarComfyStatus() {
               />
             </div>
           </div>
+          {ramKnown && (
+            <div className="mt-1.5 space-y-1">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <MemoryStick className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                  RAM：{formatGB(ramFree)} 可用 / {formatGB(ramTotal)}
+                </span>
+                <span className="ml-auto shrink-0 font-mono">{ramPct}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${ramPct}%` }}
+                />
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

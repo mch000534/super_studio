@@ -4,6 +4,10 @@ export interface ComfyUISystemStats {
     python_version: string;
     comfyui_version: string;
     args?: string[];
+    /** ComfyUI ≥ 0.3x 才提供（bytes） */
+    ram_total?: number;
+    ram_free?: number;
+    pytorch_version?: string;
   };
   devices: Array<{
     name: string;
