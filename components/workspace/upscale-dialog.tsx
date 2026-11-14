@@ -1,13 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+import { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settings-store';
@@ -42,6 +36,15 @@ export function UpscaleDialog({ target, onClose }: UpscaleDialogProps) {
   const [scale, setScale] = useState(2);
   const [preparing, setPreparing] = useState(false);
 
+  useEffect(() => {
+    if (!target) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [target, onClose]);
+
   if (!target) return null;
 
   const handleConfirm = async () => {
@@ -75,14 +78,27 @@ export function UpscaleDialog({ target, onClose }: UpscaleDialogProps) {
   };
 
   return (
-    <Dialog open={!!target} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>放大媒體</DialogTitle>
-          <DialogDescription>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="upscale-dialog-title"
+        aria-describedby="upscale-dialog-desc"
+        className="relative grid w-full max-w-lg gap-4 rounded-lg border bg-background p-6 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-col space-y-1.5">
+          <h2 id="upscale-dialog-title" className="text-lg font-semibold leading-none tracking-tight">
+            放大媒體
+          </h2>
+          <p id="upscale-dialog-desc" className="text-sm text-muted-foreground">
             {target.filename} — {target.kind === 'image' ? 'RealESRGAN' : 'SeedVR2'}
-          </DialogDescription>
-        </DialogHeader>
+          </p>
+        </div>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2">
             {[2, 4].map((s) => (
@@ -107,7 +123,15 @@ export function UpscaleDialog({ target, onClose }: UpscaleDialogProps) {
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          title="關閉"
+        >
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </button>
+      </div>
+    </div>
   );
 }
