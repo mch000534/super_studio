@@ -96,7 +96,9 @@ export const VIDEO_ASPECT_RATIOS: VideoAspectRatio[] = [
 /** 影片寬高對齊單位（對應 ComfyUI `ResolutionSelector` 的 multiple=32）。 */
 export const VIDEO_RESOLUTION_MULTIPLE = 32;
 
-function snapToMultiple(value: number): number {
+/** 將單邊尺寸修正為 32 的倍數（最小值 32；非有限值時回傳 32）。 */
+export function snapVideoDimension(value: number): number {
+  if (!Number.isFinite(value)) return VIDEO_RESOLUTION_MULTIPLE;
   return Math.max(
     VIDEO_RESOLUTION_MULTIPLE,
     Math.round(value / VIDEO_RESOLUTION_MULTIPLE) * VIDEO_RESOLUTION_MULTIPLE,
@@ -117,13 +119,22 @@ export function resolveVideoResolution(
   }
   const total = megapixels * 1_000_000;
   return {
-    width: snapToMultiple(Math.sqrt((total * ratio.w) / ratio.h)),
-    height: snapToMultiple(Math.sqrt((total * ratio.h) / ratio.w)),
+    width: snapVideoDimension(Math.sqrt((total * ratio.w) / ratio.h)),
+    height: snapVideoDimension(Math.sqrt((total * ratio.h) / ratio.w)),
   };
 }
 
-/** 由目前寬高推回最接近的比例。 */
-export function findVideoAspectRatio(width: number, height: number): VideoAspectRatio {
+/** 由目前寬高推回最接近的比例；若提供 `preferredLabel` 且有效則優先採用（維持已選比例）。 */
+export function findVideoAspectRatio(
+  width: number,
+  height: number,
+  preferredLabel?: string,
+): VideoAspectRatio {
+  const preferred = preferredLabel
+    ? VIDEO_ASPECT_RATIOS.find((r) => r.label === preferredLabel)
+    : undefined;
+  if (preferred) return preferred;
+
   const target = width / height;
   let best = VIDEO_ASPECT_RATIOS[0];
   let bestDiff = Number.POSITIVE_INFINITY;
@@ -135,6 +146,17 @@ export function findVideoAspectRatio(width: number, height: number): VideoAspect
     }
   }
   return best;
+}
+
+/** 依所選比例與已變更的一邊，計算另一邊（對齊 32 的倍數）。 */
+export function resolveAspectCounterpart(
+  ratio: VideoAspectRatio,
+  changed: 'width' | 'height',
+  value: number,
+): number {
+  if (!Number.isFinite(value) || value <= 0) return VIDEO_RESOLUTION_MULTIPLE;
+  const raw = changed === 'width' ? (value * ratio.h) / ratio.w : (value * ratio.w) / ratio.h;
+  return snapVideoDimension(raw);
 }
 
 /** 由目前寬高推回符合的百萬像素預設；找不到時回傳 undefined（代表自訂解析度）。 */

@@ -51,6 +51,8 @@ export interface GenerationParams {
   fps?: number;
   turboMode?: boolean;
   videoModelId?: 'minimax-h3' | 'fastvideo-fasth3';
+  /** 已選的影片比例標籤（例如 `16:9`）；用於自訂寬高時維持比例按鈕選取。 */
+  videoAspectRatio?: string;
   loraName?: string;
   firstFrameName?: string;
   lastFrameName?: string;

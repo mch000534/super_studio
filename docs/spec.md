@@ -283,6 +283,7 @@ BasicScheduler(8, simple) + BasicGuider + KSamplerSelect(res_multistep) + Random
 - 比例對應 ComfyUI `ResolutionSelector` 的 8 種：16:9、1:1、9:16、4:3、3:4、3:2、2:3、21:9。
 - MP 級距：0.2 / 0.3 / 0.4 / 0.5 / 0.6 / 0.7 / 0.8 / 0.9 / 0.98；預設 0.4 MP（16:9 → 864×480，約 2 分鐘）。
 - 16:9 採官方 `ResolutionSelector` 實測值；其餘比例以相同像素量換算並對齊 32。設定集中於 `lib/video-models.ts`（`VIDEO_RESOLUTION_PRESETS`、`VIDEO_ASPECT_RATIOS`、`resolveVideoResolution()`）。
+- 自訂寬高會依已選比例連動（改一邊時另一邊自動調整，`resolveAspectCounterpart()`），並在失焦時對齊 32 的倍數（`snapVideoDimension()`）。已選比例存於 `params.videoAspectRatio`，自訂時比例按鈕仍維持選取。
 - 進入影片模式時，若仍為通用預設 1024×1024，會自動套用 0.4 MP。
 
 **圖片放大（RealESRGAN）**

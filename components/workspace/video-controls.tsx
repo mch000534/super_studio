@@ -21,7 +21,9 @@ import {
   VIDEO_RESOLUTION_PRESETS,
   findVideoAspectRatio,
   findVideoMegapixels,
+  resolveAspectCounterpart,
   resolveVideoResolution,
+  snapVideoDimension,
   type VideoAspectRatio,
 } from '@/lib/video-models';
 
@@ -29,7 +31,7 @@ export function VideoControls({ showTurbo = true }: { showTurbo?: boolean }) {
   const params = useGenerationStore((s) => s.params);
   const updateParams = useGenerationStore((s) => s.updateParams);
   const isFastH3 = params.videoModelId === 'fastvideo-fasth3';
-  const aspectRatio = findVideoAspectRatio(params.width, params.height);
+  const aspectRatio = findVideoAspectRatio(params.width, params.height, params.videoAspectRatio);
   const megapixels = findVideoMegapixels(params.width, params.height, aspectRatio);
   const isCustomResolution = megapixels === undefined;
 
@@ -40,13 +42,14 @@ export function VideoControls({ showTurbo = true }: { showTurbo?: boolean }) {
       updateParams({
         width: DEFAULT_VIDEO_RESOLUTION.width,
         height: DEFAULT_VIDEO_RESOLUTION.height,
+        videoAspectRatio: '16:9',
       });
     }
   }, [updateParams]);
 
   const applyResolution = (ratio: VideoAspectRatio, mp: number) => {
     const { width, height } = resolveVideoResolution(ratio, mp);
-    updateParams({ width, height });
+    updateParams({ width, height, videoAspectRatio: ratio.label });
   };
 
   const onAspectRatioChange = (ratio: VideoAspectRatio) => {
@@ -57,6 +60,25 @@ export function VideoControls({ showTurbo = true }: { showTurbo?: boolean }) {
   const onMegapixelsChange = (value: string) => {
     if (value === 'custom') return;
     applyResolution(aspectRatio, Number(value));
+  };
+
+  // 自訂寬高：改一邊時另一邊依所選比例自動調整，並對齊 32 的倍數
+  const onDimensionChange = (key: 'width' | 'height', raw: string) => {
+    const value = Number(raw);
+    const counterpartKey = key === 'width' ? 'height' : 'width';
+    updateParams({
+      [key]: value,
+      [counterpartKey]: resolveAspectCounterpart(aspectRatio, key, value),
+    });
+  };
+
+  const onDimensionBlur = (key: 'width' | 'height', raw: string) => {
+    const snapped = snapVideoDimension(Number(raw));
+    const counterpartKey = key === 'width' ? 'height' : 'width';
+    updateParams({
+      [key]: snapped,
+      [counterpartKey]: resolveAspectCounterpart(aspectRatio, key, snapped),
+    });
   };
 
   const onModelChange = (v: string) => {
@@ -118,15 +140,26 @@ export function VideoControls({ showTurbo = true }: { showTurbo?: boolean }) {
           <Input
             type="number"
             value={params.width}
-            onChange={(e) => updateParams({ width: Number(e.target.value) })}
+            onChange={(e) => onDimensionChange('width', e.target.value)}
+            onBlur={(e) => onDimensionBlur('width', e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
           />
           <span className="text-muted-foreground">×</span>
           <Input
             type="number"
             value={params.height}
-            onChange={(e) => updateParams({ height: Number(e.target.value) })}
+            onChange={(e) => onDimensionChange('height', e.target.value)}
+            onBlur={(e) => onDimensionBlur('height', e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
           />
         </div>
+        <p className="text-xs text-muted-foreground">
+          自訂寬高會依所選比例連動，並自動對齊 32 的倍數。
+        </p>
       </div>
 
       <div className="space-y-2">
