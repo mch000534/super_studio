@@ -278,6 +278,13 @@ BasicScheduler(8, simple) + BasicGuider + KSamplerSelect(res_multistep) + Random
 - 模型檔名、固定值集中於 `lib/video-models.ts`（`fastvideo-fasth3` 家族）。
 - 需 ComfyUI 具備 `MiniMaxH3SigmaShift`、`ModelAttentionBackend`、`BlockSparseAttention` 與 `comfy kitchen attention` 後端。
 
+**影片解析度預設（MiniMax H3／FastH3 共用）**
+- UI（`components/workspace/video-controls.tsx`）提供「比例快速按鈕 + 百萬像素（MP）選擇 + 自訂寬高」。
+- 比例對應 ComfyUI `ResolutionSelector` 的 8 種：16:9、1:1、9:16、4:3、3:4、3:2、2:3、21:9。
+- MP 級距：0.2 / 0.3 / 0.4 / 0.5 / 0.6 / 0.7 / 0.8 / 0.9 / 0.98；預設 0.4 MP（16:9 → 864×480，約 2 分鐘）。
+- 16:9 採官方 `ResolutionSelector` 實測值；其餘比例以相同像素量換算並對齊 32。設定集中於 `lib/video-models.ts`（`VIDEO_RESOLUTION_PRESETS`、`VIDEO_ASPECT_RATIOS`、`resolveVideoResolution()`）。
+- 進入影片模式時，若仍為通用預設 1024×1024，會自動套用 0.4 MP。
+
 **圖片放大（RealESRGAN）**
 ```
 LoadImage(源圖) → ImageUpscaleWithModel(UpscaleModelLoader RealESRGAN_x4plus) → SaveImage

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { Dices } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
@@ -12,18 +13,51 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 import { useGenerationStore } from '@/stores/generation-store';
-
-const RESOLUTIONS = [
-  { label: '720p', w: 1280, h: 720 },
-  { label: '1080p', w: 1920, h: 1080 },
-  { label: '自訂' },
-];
+import {
+  DEFAULT_VIDEO_RESOLUTION,
+  VIDEO_ASPECT_RATIOS,
+  VIDEO_RESOLUTION_PRESETS,
+  findVideoAspectRatio,
+  findVideoMegapixels,
+  resolveVideoResolution,
+  type VideoAspectRatio,
+} from '@/lib/video-models';
 
 export function VideoControls({ showTurbo = true }: { showTurbo?: boolean }) {
   const params = useGenerationStore((s) => s.params);
   const updateParams = useGenerationStore((s) => s.updateParams);
   const isFastH3 = params.videoModelId === 'fastvideo-fasth3';
+  const aspectRatio = findVideoAspectRatio(params.width, params.height);
+  const megapixels = findVideoMegapixels(params.width, params.height, aspectRatio);
+  const isCustomResolution = megapixels === undefined;
+
+  // 首次進入影片模式且仍為通用預設（1024×1024）時，套用較快的影片預設解析度
+  useEffect(() => {
+    const { width, height } = useGenerationStore.getState().params;
+    if (width === 1024 && height === 1024) {
+      updateParams({
+        width: DEFAULT_VIDEO_RESOLUTION.width,
+        height: DEFAULT_VIDEO_RESOLUTION.height,
+      });
+    }
+  }, [updateParams]);
+
+  const applyResolution = (ratio: VideoAspectRatio, mp: number) => {
+    const { width, height } = resolveVideoResolution(ratio, mp);
+    updateParams({ width, height });
+  };
+
+  const onAspectRatioChange = (ratio: VideoAspectRatio) => {
+    // 沿用目前 MP；若為自訂則回到預設 MP
+    applyResolution(ratio, megapixels ?? DEFAULT_VIDEO_RESOLUTION.megapixels);
+  };
+
+  const onMegapixelsChange = (value: string) => {
+    if (value === 'custom') return;
+    applyResolution(aspectRatio, Number(value));
+  };
 
   const onModelChange = (v: string) => {
     // 切換模型時清空自訂檔名，讓新模型的預設值生效
@@ -45,19 +79,41 @@ export function VideoControls({ showTurbo = true }: { showTurbo?: boolean }) {
     <div className="space-y-4">
       <div className="space-y-1.5">
         <Label>解析度</Label>
-        <div className="grid grid-cols-3 gap-1">
-          {RESOLUTIONS.map((r) => (
+        <div className="flex flex-wrap gap-1">
+          {VIDEO_ASPECT_RATIOS.map((r) => (
             <button
               key={r.label}
-              onClick={() => {
-                if (r.w) updateParams({ width: r.w, height: r.h });
-              }}
-              className="rounded-md border px-2 py-1.5 text-xs"
+              onClick={() => onAspectRatioChange(r)}
+              className={cn(
+                'rounded-md border px-2 py-1 text-xs',
+                r.label === aspectRatio.label
+                  ? 'border-primary bg-primary/10 text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
             >
               {r.label}
             </button>
           ))}
         </div>
+        <Select
+          value={isCustomResolution ? 'custom' : String(megapixels)}
+          onValueChange={onMegapixelsChange}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {VIDEO_RESOLUTION_PRESETS.map((p) => {
+              const { width, height } = resolveVideoResolution(aspectRatio, p.megapixels);
+              return (
+                <SelectItem key={p.label} value={String(p.megapixels)}>
+                  {p.label}（{width}×{height}）
+                </SelectItem>
+              );
+            })}
+            <SelectItem value="custom">自訂</SelectItem>
+          </SelectContent>
+        </Select>
         <div className="flex items-center gap-2">
           <Input
             type="number"
