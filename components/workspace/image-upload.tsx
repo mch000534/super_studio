@@ -50,10 +50,11 @@ export function ImageUpload({
     (s) => (value ? s.items.find((i) => i.kind === 'image' && i.filename === value) : undefined)
   );
   const serverUrl = useMemo(() => {
-    if (!value || VIDEO_EXT.test(value)) return null;
+    if (!value) return null;
+    if (VIDEO_EXT.test(value) && !acceptVideo) return null;
     if (galleryItem?.url) return galleryItem.url;
     return comfyuiClient.getViewUrl(value, comfyuiHost, '', 'input', { authHeader });
-  }, [value, galleryItem, comfyuiHost, authHeader]);
+  }, [value, galleryItem, comfyuiHost, authHeader, acceptVideo]);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -147,7 +148,7 @@ export function ImageUpload({
   const url = preview || serverUrl;
 
   if (url) {
-    const isVideo = previewKind === 'video';
+    const isVideo = previewKind === 'video' || (acceptVideo && VIDEO_EXT.test(url));
     return (
       <div className="space-y-2">
         <Label small>{label}</Label>

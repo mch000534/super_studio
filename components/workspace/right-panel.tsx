@@ -570,7 +570,8 @@ function VidUpscaleControls({ onInterrupt }: { onInterrupt: () => void }) {
         <span className="text-xs text-muted-foreground">可從上方畫廊拖曳影片至此作為來源</span>
         <ImageUpload
           label="或上傳來源影片"
-          value={params.imageName ? 'set' : null}
+          value={params.imageName ?? null}
+          acceptVideo
           onChange={(data) => {
             if (!data) updateParams({ imageName: undefined });
           }}
