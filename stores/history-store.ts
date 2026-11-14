@@ -26,6 +26,19 @@ function dedupeRecords(records: HistoryRecord[]): HistoryRecord[] {
   });
 }
 
+// 清理歷史記錄：只保留真正輸出到 output 資料夾的媒體。
+// 過去收集過 type=input 的來源預覽（LoadVideo 的 UI 輸出），會讓畫廊
+// 顯示未放大的來源影片；thumbnail 若指向被移除的項目則改用第一個保留項。
+function sanitizeRecord(record: HistoryRecord): HistoryRecord {
+  const media = (record.media || []).filter((m) => m.type === 'output');
+  if (media.length === (record.media || []).length) return record;
+  return { ...record, media, thumbnail: media[0]?.url || '' };
+}
+
+function sanitizeRecords(records: HistoryRecord[]): HistoryRecord[] {
+  return records.map(sanitizeRecord).filter((r) => (r.media || []).length > 0);
+}
+
 interface HistoryState {
   records: HistoryRecord[];
   addRecord: (record: HistoryRecord) => void;
@@ -39,7 +52,8 @@ export const useHistoryStore = create<HistoryState>()(
       records: [],
       addRecord: (record) =>
         set((s) => {
-          const existing = dedupeRecords([record, ...s.records]).slice(0, 500);
+          const clean = sanitizeRecord(record);
+          const existing = dedupeRecords([clean, ...s.records]).slice(0, 500);
           return { records: existing };
         }),
       removeRecords: (ids) => {
@@ -62,7 +76,7 @@ export const useHistoryStore = create<HistoryState>()(
       name: 'super-studio-history',
       merge: (persisted, current) => {
         const base = { ...current, ...(persisted as Partial<HistoryState>) };
-        if (Array.isArray(base.records)) base.records = dedupeRecords(base.records);
+        if (Array.isArray(base.records)) base.records = dedupeRecords(sanitizeRecords(base.records));
         return base as HistoryState;
       },
     }

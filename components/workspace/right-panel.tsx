@@ -54,17 +54,22 @@ export function RightPanel() {
   const addRecord = useHistoryStore((s) => s.addRecord);
 
   const handleResult = useCallback((media: MediaItem[], mode: Mode, params: GenerationParams) => {
-    addItems(media);
+    // 放大模式的結果標記 isUpscaled，畫廊卡片會顯示 HD 徽章以便辨識
+    const finalMedia =
+      mode === 'img_upscale' || mode === 'vid_upscale'
+        ? media.map((m) => ({ ...m, isUpscaled: true }))
+        : media;
+    addItems(finalMedia);
     addRecord({
       id: `h_${Date.now()}`,
       timestamp: new Date().toISOString(),
       mode,
       prompt: params.prompt,
       params,
-      thumbnail: media[0]?.url || '',
-      media,
+      thumbnail: finalMedia[0]?.url || '',
+      media: finalMedia,
     });
-    toast({ title: '生成完成', description: `已新增 ${media.length} 個結果` });
+    toast({ title: '生成完成', description: `已新增 ${finalMedia.length} 個結果` });
   }, [addItems, addRecord]);
 
   const { submit, interrupt } = useGeneration();

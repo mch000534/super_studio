@@ -123,6 +123,10 @@ function syncGenerationStore(task: QueueTask | null) {
 let latestSubmitNext: (() => Promise<void>) | null = null;
 let submitLock = false;
 
+// 正在取得結果的 prompt（execution_success 與 executing node=null 幾乎同時抵達，
+// 避免同一 prompt 的結果被重複收集）
+const fetchingResults = new Set<string>();
+
 export function useGeneration() {
   const { authHeader } = useSettingsStore();
   const ws = useWebSocket();
@@ -249,61 +253,82 @@ export function useGeneration() {
   }, [ws]);
 
   const fetchResult = useCallback(
-    async (promptId: string) => {
+    async (promptId: string, attempt = 0) => {
+      if (fetchingResults.has(promptId)) return;
       const settings = useSettingsStore.getState();
       const q = useQueueStore.getState();
       const task = q.tasks.find((t) => t.promptId === promptId);
       if (!task) return;
       if (task.status === 'completed' || task.status === 'cancelled') return;
+      fetchingResults.add(promptId);
+      try {
+        const host = settings.comfyuiHost;
+        const history = await comfyuiClient.getHistory(promptId, host, authHeader);
+        const entry = history.ok ? history.data[promptId] : undefined;
 
-      const host = settings.comfyuiHost;
-      const history = await comfyuiClient.getHistory(promptId, host, authHeader);
-
-      const media: MediaItem[] = [];
-      if (history.ok) {
-        const entry = history.data[promptId];
-        if (entry) {
-          Object.values(entry.outputs || {}).forEach((output) => {
-            const collect = (files: FileInfo[] | undefined, kind: MediaItem['kind']) => {
-              (files || []).forEach((f) => {
-                // ComfyUI 的 history outputs 包含所有節點的 UI 輸出：LoadVideo 等中間節點
-                // 會回傳 type=input 的來源檔預覽，並非生成結果（曾導致放大影片在畫廊顯示兩次），
-                // 因此只收集真正寫入 output 資料夾的檔案。
-                if (f.type !== 'output') return;
-                const resolvedKind: MediaItem['kind'] =
-                  kind === 'image' && VIDEO_EXT.test(f.filename) ? 'video' : kind;
-                media.push({
-                  filename: f.filename,
-                  subfolder: f.subfolder,
-                  type: f.type,
-                  kind: resolvedKind,
-                  url: comfyuiClient.getViewUrl(f.filename, host, f.subfolder, f.type, {
-                    authHeader,
-                  }),
-                  timestamp: Date.now(),
-                });
-              });
-            };
-            collect(output.images, 'image');
-            collect(output.gifs, 'video');
-            collect(output.audio, 'audio');
-            collect(output['3d'], '3d');
-          });
+        if (!entry) {
+          // 先抵達的事件可能讀不到剛寫入的 history，稍後重試一次；
+          // 重試後仍沒有結果才視為失敗，避免任務卡在執行中。
+          if (attempt === 0) {
+            setTimeout(() => {
+              void fetchResult(promptId, 1);
+            }, 1500);
+          } else {
+            useQueueStore.getState().updateTask(task.id, {
+              status: 'failed',
+              error: '未取得生成結果',
+              completedAt: Date.now(),
+            });
+            useQueueStore.getState().setExecutingPromptId(null);
+            syncGenerationStore(null);
+            setTimeout(() => latestSubmitNext?.(), 0);
+          }
+          return;
         }
-      }
 
-      if (media.length > 0) {
-        globalResultHandler?.(media, task.params.mode, task.params);
-      }
+        const media: MediaItem[] = [];
+        Object.values(entry.outputs || {}).forEach((output) => {
+          const collect = (files: FileInfo[] | undefined, kind: MediaItem['kind']) => {
+            (files || []).forEach((f) => {
+              // ComfyUI 的 history outputs 包含所有節點的 UI 輸出：LoadVideo 等中間節點
+              // 會回傳 type=input 的來源檔預覽，並非生成結果（曾導致放大影片在畫廊顯示兩次），
+              // 因此只收集真正寫入 output 資料夾的檔案。
+              if (f.type !== 'output') return;
+              const resolvedKind: MediaItem['kind'] =
+                kind === 'image' && VIDEO_EXT.test(f.filename) ? 'video' : kind;
+              media.push({
+                filename: f.filename,
+                subfolder: f.subfolder,
+                type: f.type,
+                kind: resolvedKind,
+                url: comfyuiClient.getViewUrl(f.filename, host, f.subfolder, f.type, {
+                  authHeader,
+                }),
+                timestamp: Date.now(),
+              });
+            });
+          };
+          collect(output.images, 'image');
+          collect(output.gifs, 'video');
+          collect(output.audio, 'audio');
+          collect(output['3d'], '3d');
+        });
 
-      useQueueStore.getState().updateTask(task.id, {
-        status: 'completed',
-        completedAt: Date.now(),
-      });
-      useQueueStore.getState().setExecutingPromptId(null);
-      syncGenerationStore(null);
-      // Advance to the next pending task
-      setTimeout(() => latestSubmitNext?.(), 0);
+        if (media.length > 0) {
+          globalResultHandler?.(media, task.params.mode, task.params);
+        }
+
+        useQueueStore.getState().updateTask(task.id, {
+          status: 'completed',
+          completedAt: Date.now(),
+        });
+        useQueueStore.getState().setExecutingPromptId(null);
+        syncGenerationStore(null);
+        // Advance to the next pending task
+        setTimeout(() => latestSubmitNext?.(), 0);
+      } finally {
+        fetchingResults.delete(promptId);
+      }
     },
     [authHeader]
   );
