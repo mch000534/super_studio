@@ -7,6 +7,7 @@ import { MODES } from '@/lib/modes';
 import { useSettingsStore } from '@/stores/settings-store';
 import type { Mode } from '@/types/workflow';
 import { useQueueStore, queuePendingCount } from '@/stores/queue-store';
+import { SidebarComfyStatus } from '@/components/layout/sidebar-comfy-status';
 
 const ICONS: Record<Mode, React.ComponentType<{ className?: string }>> = {
   text2img: ImageIcon,
@@ -52,6 +53,7 @@ export function Sidebar() {
           );
         })}
       </nav>
+      <SidebarComfyStatus />
       <div className="border-t p-3 space-y-1">
         <Link
           href="/queue"
