@@ -18,7 +18,12 @@ export const useGalleryStore = create<GalleryState>()(
       addItems: (items) =>
         set((s) => {
           const existing = new Set(s.items.map((i) => i.url));
-          const unique = items.filter((i) => !existing.has(i.url));
+          // 同一批次內也可能出現重複 URL（同一檔案同時列在 images 與 gifs），需一併去重
+          const unique = items.filter((i) => {
+            if (existing.has(i.url)) return false;
+            existing.add(i.url);
+            return true;
+          });
           return { items: [...unique, ...s.items].slice(0, 500) };
         }),
       removeItem: (url) => set((s) => ({ items: s.items.filter((i) => i.url !== url) })),

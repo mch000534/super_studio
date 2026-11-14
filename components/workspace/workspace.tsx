@@ -16,9 +16,12 @@ export function Workspace() {
   const { cancelTask } = useGeneration();
 
   useEffect(() => {
+    // 歷史記錄中僅重建真正輸出到 output 資料夾的結果（過去收集到 type=input
+    // 的來源預覽會讓影片在畫廊顯示兩次，這裡一併清掉舊資料）
     const seen = new Map<string, MediaItem>();
     for (const r of useHistoryStore.getState().records) {
       for (const m of r.media ?? []) {
+        if (m.type !== 'output') continue;
         if (!seen.has(m.url)) seen.set(m.url, m);
       }
     }

@@ -266,6 +266,10 @@ export function useGeneration() {
           Object.values(entry.outputs || {}).forEach((output) => {
             const collect = (files: FileInfo[] | undefined, kind: MediaItem['kind']) => {
               (files || []).forEach((f) => {
+                // ComfyUI 的 history outputs 包含所有節點的 UI 輸出：LoadVideo 等中間節點
+                // 會回傳 type=input 的來源檔預覽，並非生成結果（曾導致放大影片在畫廊顯示兩次），
+                // 因此只收集真正寫入 output 資料夾的檔案。
+                if (f.type !== 'output') return;
                 const resolvedKind: MediaItem['kind'] =
                   kind === 'image' && VIDEO_EXT.test(f.filename) ? 'video' : kind;
                 media.push({
