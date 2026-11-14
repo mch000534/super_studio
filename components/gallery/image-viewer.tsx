@@ -21,6 +21,7 @@ export function ImageViewer({ items, index, onClose, onIndexChange }: ImageViewe
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(
     null
   );
+  const dragMovedRef = useRef(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -84,12 +85,18 @@ export function ImageViewer({ items, index, onClose, onIndexChange }: ImageViewe
 
       <div
         className="relative flex flex-1 items-center justify-center overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => {
           dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y };
+          dragMovedRef.current = false;
         }}
         onMouseMove={(e) => {
           if (dragRef.current) {
+            if (
+              Math.abs(e.clientX - dragRef.current.startX) > 3 ||
+              Math.abs(e.clientY - dragRef.current.startY) > 3
+            ) {
+              dragMovedRef.current = true;
+            }
             setPos({
               x: dragRef.current.origX + (e.clientX - dragRef.current.startX),
               y: dragRef.current.origY + (e.clientY - dragRef.current.startY),
@@ -98,6 +105,15 @@ export function ImageViewer({ items, index, onClose, onIndexChange }: ImageViewe
         }}
         onMouseUp={() => (dragRef.current = null)}
         onMouseLeave={() => (dragRef.current = null)}
+        onClick={(e) => {
+          // suppress the click that ends an image drag-pan, otherwise close
+          if (dragMovedRef.current) {
+            dragMovedRef.current = false;
+            e.stopPropagation();
+            return;
+          }
+          // clicking the empty area around the media closes the viewer
+        }}
       >
         {item.kind === 'image' ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -105,6 +121,7 @@ export function ImageViewer({ items, index, onClose, onIndexChange }: ImageViewe
             src={item.url}
             alt={item.filename}
             draggable={false}
+            onClick={(e) => e.stopPropagation()}
             style={{
               transform: `translate(${pos.x}px, ${pos.y}px) scale(${scale})`,
               transition: dragRef.current ? 'none' : 'transform 0.15s',
@@ -112,7 +129,7 @@ export function ImageViewer({ items, index, onClose, onIndexChange }: ImageViewe
             className="max-h-full max-w-full select-none"
           />
         ) : item.kind === 'video' ? (
-          <div className="w-3/4 max-w-2xl">
+          <div className="w-3/4 max-w-2xl" onClick={(e) => e.stopPropagation()}>
             <VideoPlayer item={item} />
           </div>
         ) : item.kind === 'audio' ? (
@@ -131,7 +148,7 @@ export function ImageViewer({ items, index, onClose, onIndexChange }: ImageViewe
       </div>
 
       {items.length > 1 && (
-        <div className="flex justify-between p-3">
+        <div className="flex justify-between p-3" onClick={(e) => e.stopPropagation()}>
           <Button
             variant="ghost"
             className="text-white"
