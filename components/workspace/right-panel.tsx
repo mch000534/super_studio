@@ -564,6 +564,19 @@ function VidUpscaleControls({ onInterrupt }: { onInterrupt: () => void }) {
     throw new Error(r.error.message);
   };
 
+  const handleSourceSelect = async (item: MediaItem) => {
+    if (item.kind !== 'video') return;
+    const r = await ensureInputRef(item, comfyuiHost, authHeader);
+    if (r.ok) {
+      updateParams({ imageName: r.name });
+      if (item.type !== 'input' || item.subfolder) {
+        toast({ title: '已轉為參考影片', description: '來源影片已上傳至 ComfyUI input' });
+      }
+      return;
+    }
+    toast({ variant: 'destructive', title: '選取失敗', description: r.message });
+  };
+
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
@@ -576,9 +589,7 @@ function VidUpscaleControls({ onInterrupt }: { onInterrupt: () => void }) {
             if (!data) updateParams({ imageName: undefined });
           }}
           onUpload={handleUpload}
-          onGalleryDrop={(item) => {
-            if (item.kind === 'video') updateParams({ imageName: item.filename });
-          }}
+          onGalleryDrop={handleSourceSelect}
         />
       </div>
       <UpscaleControls />

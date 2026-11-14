@@ -169,7 +169,10 @@ export function ImageUpload({
           )}
           <div className="absolute right-1 top-1 flex gap-1">
             <button
-              onClick={() => inputRef.current?.click()}
+              onClick={() => {
+                if (inputRef.current) inputRef.current.value = '';
+                inputRef.current?.click();
+              }}
               className="rounded-md bg-background/80 p-1 hover:bg-background"
               title="更換"
             >
@@ -178,7 +181,10 @@ export function ImageUpload({
             <button
               onClick={() => {
                 if (preview) URL.revokeObjectURL(preview);
+                setPreview(null);
                 setPreviewKind(null);
+                setError(null);
+                if (inputRef.current) inputRef.current.value = '';
                 onChange(null);
               }}
               className="rounded-md bg-background/80 p-1 hover:bg-background"
@@ -195,6 +201,7 @@ export function ImageUpload({
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
+            e.target.value = '';
             if (f) handleFile(f);
           }}
         />
@@ -242,6 +249,7 @@ export function ImageUpload({
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
+          e.target.value = '';
           if (f) handleFile(f);
         }}
       />
