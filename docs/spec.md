@@ -274,6 +274,7 @@ BasicScheduler(8, simple) + BasicGuider + KSamplerSelect(res_multistep) + Random
   → SamplerCustomAdvanced → VAEDecode → VAEDecodeAudio → CreateVideo → SaveVideo
 ```
 - 依官方 ComfyUI 範本「First Last Frame to Video (FastVideo FastH3)」組圖，固定 8 步、無 Turbo LoRA。
+- 影片模式預設模型為 FastH3（`stores/generation-store.ts` 的 `defaultParams.videoModelId`）。
 - 寬高對齊 32 的倍數；幀數公式同上（`17k+5`）。
 - 模型檔名、固定值集中於 `lib/video-models.ts`（`fastvideo-fasth3` 家族）。
 - 需 ComfyUI 具備 `MiniMaxH3SigmaShift`、`ModelAttentionBackend`、`BlockSparseAttention` 與 `comfy kitchen attention` 後端。

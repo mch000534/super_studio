@@ -13,6 +13,7 @@ export function defaultParams(mode: Mode): GenerationParams {
     cfg: 1,
     batch: 1,
     imageModelId: 'z-image',
+    videoModelId: 'fastvideo-fasth3',
   };
   return { ...base };
 }
