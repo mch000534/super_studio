@@ -26,6 +26,11 @@ export function SidebarComfyStatus() {
   const host = useSettingsStore((s) => s.comfyuiHost);
   const authHeader = useSettingsStore((s) => s.authHeader);
   const [stats, setStats] = useState<ComfyUISystemStats | null>(null);
+  // zustand persist 的 comfyuiHost 來自 localStorage，僅在 client 端取得；
+  // SSR 會渲染預設值而與 client 首次渲染不一致 → hydration mismatch。
+  // 故 mount 前渲染佔位符，保證伺服器與 client 首次渲染相同。
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // 連線後抓取 system_stats，並每 30 秒刷新（VRAM 用量）
   useEffect(() => {
@@ -50,7 +55,11 @@ export function SidebarComfyStatus() {
   const vramFree = device?.vram_free || 0;
   const vramUsed = vramTotal - vramFree;
   const vramPct = vramTotal > 0 ? Math.round((vramUsed / vramTotal) * 100) : 0;
-  const hostDisplay = host ? host.replace(/^https?:\/\//, '') : '未設定';
+  const hostDisplay = mounted
+    ? host
+      ? host.replace(/^https?:\/\//, '')
+      : '未設定'
+    : '';
 
   return (
     <div className="border-t px-3 py-3 text-xs">
