@@ -106,10 +106,15 @@ export function ImageUpload({
   );
 
   const handleDrop = useCallback(
-    (e: React.DragEvent) => {
+    async (e: React.DragEvent) => {
       const item = getGalleryDragItem(e.dataTransfer);
       if (item && onGalleryDrop) {
-        onGalleryDrop(item);
+        setUploading(true);
+        try {
+          await onGalleryDrop(item);
+        } finally {
+          setUploading(false);
+        }
         return;
       }
       const f = e.dataTransfer.files?.[0];
@@ -148,7 +153,8 @@ export function ImageUpload({
   const url = preview || serverUrl;
 
   if (url) {
-    const isVideo = previewKind === 'video' || (acceptVideo && VIDEO_EXT.test(url));
+    const isVideo =
+      previewKind === 'video' || (acceptVideo && VIDEO_EXT.test(value ?? ''));
     return (
       <div className="space-y-2">
         <Label small>{label}</Label>
