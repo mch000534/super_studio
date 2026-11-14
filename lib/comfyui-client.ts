@@ -164,6 +164,33 @@ export const comfyuiClient = {
     return { ok: true, data: names.map((name) => ({ name })) };
   },
 
+  async listUserWorkflows(
+    host: string,
+    authHeader?: string
+  ): Promise<ApiResult<string[]>> {
+    const res = await request<unknown>('userdata/workflows?recursive=true', { host, authHeader });
+    if (!res.ok) return res;
+
+    const raw = res.data;
+    const paths: string[] = [];
+    if (Array.isArray(raw)) {
+      for (const item of raw) {
+        if (typeof item === 'string') {
+          paths.push(item);
+        } else if (item && typeof item === 'object') {
+          const obj = item as { path?: unknown; name?: unknown; type?: unknown };
+          const p =
+            typeof obj.path === 'string' ? obj.path : typeof obj.name === 'string' ? obj.name : null;
+          if (!p) continue;
+          // recursive listing includes directories; keep files only
+          if (typeof obj.type === 'string' && obj.type !== 'file') continue;
+          paths.push(p);
+        }
+      }
+    }
+    return { ok: true, data: paths.filter((p) => p.toLowerCase().endsWith('.json')) };
+  },
+
   getViewUrl(
     filename: string,
     host: string,

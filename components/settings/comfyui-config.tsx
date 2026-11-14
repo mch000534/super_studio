@@ -8,6 +8,7 @@ import { CheckCircle2, Loader2, Plug, Save, XCircle } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settings-store';
 import { useComfyUI } from '@/hooks/use-comfyui';
 import { SystemInfo } from '@/components/settings/system-info';
+import { ResourceInspector } from '@/components/settings/resource-inspector';
 import { toast } from '@/hooks/use-toast';
 
 interface TestResult {
@@ -18,7 +19,7 @@ interface TestResult {
 
 export function ComfyUIConfig() {
   const { comfyuiHost, setHost } = useSettingsStore();
-  const { testConnection, testing, testError, systemInfo } = useComfyUI();
+  const { testConnection, testing, testError, systemInfo, isConnected } = useComfyUI();
   const [hostDraft, setHostDraft] = useState(comfyuiHost);
   const [lastResult, setLastResult] = useState<TestResult | null>(null);
 
@@ -89,6 +90,7 @@ export function ComfyUIConfig() {
 
       {!lastResult && testError && <p className="text-sm text-destructive">{testError}</p>}
       {systemInfo && <SystemInfo info={systemInfo} />}
+      <ResourceInspector isConnected={isConnected} />
     </div>
   );
 }
