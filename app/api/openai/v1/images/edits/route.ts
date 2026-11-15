@@ -37,6 +37,9 @@ export function OPTIONS() {
  *   <image1>、<image2>… 引用）
  * - moss-image：MOSS-Image Edit LoRA 指令編輯（image1 為編輯目標，CFG 固定 4）
  * - z-image（預設）：單圖 img2img，以 denoise 控制改動幅度
+ *
+ * size：qwen-image-2.1 / moss-image 會以它作為輸出畫布（比例可與參考圖不同，
+ * 模型重新構圖）；z-image img2img 輸出比例跟隨來源圖。
  */
 export async function POST(req: NextRequest) {
   try {
@@ -108,14 +111,12 @@ export async function POST(req: NextRequest) {
         ...baseParams,
         mode: 'img_edit',
         refImages,
-        resolution: width,
       });
     } else if (model === 'moss-image') {
       workflow = buildMossImageEdit({
         ...baseParams,
         mode: 'img_edit',
         refImages,
-        resolution: width,
       });
     } else {
       workflow = buildImg2Img({

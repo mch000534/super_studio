@@ -525,10 +525,11 @@ export function buildMossImageEdit(params: GenerationParams): Record<string, Wor
   const family = getImageModelFamily('moss-image');
   const refs = (params.refImages ?? []).filter(Boolean).slice(0, 10);
   const editFormat = params.mossEditFormat || 'Moss-Image-Edit';
-  // 參考圖進入擴散模型時就是原尺寸，這裡統一縮到像素預算。
-  // 面板的 resolution 是「長邊」，換算成 MP：1024 → 1.0 MP（官方建議值）。
-  const edge = params.resolution ?? 1024;
-  const megapixels = Math.min(4, Math.max(0.25, Math.round((edge / 1024) ** 2 * 100) / 100));
+  // 輸出畫布直接用所選寬高（與文生圖同一套尺寸選擇器；EmptyFlux2LatentImage 需 16 倍數）。
+  // 參考圖另外縮放到與畫布相同的像素量，讓模型在目標構圖下重繪。
+  const width = Math.min(4096, Math.max(64, Math.round((params.width || 1024) / 16) * 16));
+  const height = Math.min(4096, Math.max(64, Math.round((params.height || 1024) / 16) * 16));
+  const megapixels = Math.min(4, Math.max(0.25, Math.round(((width * height) / 1_000_000) * 100) / 100));
 
   const nodes: Record<string, WorkflowNode> = {
     'moss_unet': {
@@ -612,13 +613,9 @@ export function buildMossImageEdit(params: GenerationParams): Record<string, Wor
       negInputs[`images.image_${idx}`] = [scaleId, 0];
     });
 
-    nodes['moss_size'] = {
-      class_type: 'GetImageSize',
-      inputs: { image: ['moss_ref_scale_1', 0] },
-    } as WorkflowNode;
     nodes['moss_latent'] = {
       class_type: 'EmptyFlux2LatentImage',
-      inputs: { width: ['moss_size', 0], height: ['moss_size', 1], batch_size: 1 },
+      inputs: { width, height, batch_size: 1 },
     } as WorkflowNode;
 
     nodes['moss_pos'] = {
@@ -733,12 +730,18 @@ export function buildQwenImage21Edit(params: GenerationParams): Record<string, W
   const familyParams = withFamilyModels({ ...params, imageModelId: 'qwen-image-2.1' });
   const refs = (params.refImages ?? []).filter(Boolean).slice(0, 10);
 
+  // 輸出畫布直接用所選寬高（與文生圖同一套尺寸選擇器，32 倍數）；
+  // 編碼節點的 resolution 取畫布長邊，控制參考圖的處理解析度。
+  const width = Math.min(4096, Math.max(64, Math.round((params.width || 1024) / 32) * 32));
+  const height = Math.min(4096, Math.max(64, Math.round((params.height || 1024) / 32) * 32));
+  const teResolution = Math.max(width, height);
+
   const teInputs: Record<string, unknown> = {
     clip: ['453', 0],
     prompt: params.prompt,
     negative_prompt: params.negativePrompt || '',
     vae: ['454', 0],
-    resolution: params.resolution ?? 1024,
+    resolution: teResolution,
   };
 
   const nodes: Record<string, WorkflowNode> = {
@@ -787,6 +790,12 @@ export function buildQwenImage21Edit(params: GenerationParams): Record<string, W
     inputs: teInputs,
   } as WorkflowNode;
 
+  // 輸出畫布獨立於參考圖：比例可與參考圖不同，模型會依目標尺寸重新構圖
+  nodes['476'] = {
+    class_type: 'EmptyLatentImage',
+    inputs: { width, height, batch_size: params.batch },
+  } as WorkflowNode;
+
   nodes['458'] = {
     class_type: 'KSampler',
     inputs: {
@@ -798,7 +807,7 @@ export function buildQwenImage21Edit(params: GenerationParams): Record<string, W
       scheduler: 'simple',
       positive: ['474', 0],
       negative: ['474', 1],
-      latent_image: ['474', 2],
+      latent_image: ['476', 0],
       denoise: 1,
     },
   } as WorkflowNode;

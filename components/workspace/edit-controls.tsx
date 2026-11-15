@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useGenerationStore } from '@/stores/generation-store';
 import { getImageModelFamily } from '@/lib/image-models';
+import { SizePicker } from '@/components/workspace/size-picker';
 
 function randomSeed() {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -17,28 +18,17 @@ export function EditControls() {
   const family = getImageModelFamily(params.imageModelId);
   const isMoss = family.kind === 'moss-image';
 
-  const resolution = params.resolution ?? 1024;
-
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>輸出解析度</Label>
-          <span className="font-mono text-xs text-muted-foreground">{resolution}</span>
-        </div>
-        <Slider
-          min={512}
-          max={2048}
-          step={32}
-          value={[resolution]}
-          onValueChange={([v]) => updateParams({ resolution: v })}
-        />
-        <p className="text-xs text-muted-foreground">
-          {isMoss
-            ? '參考圖縮放至約此長邊（1.0 MP 上下最佳；輸出會沿用第一張參考圖的比例）'
-            : '參考圖縮放至約此像素預算（0 時保持原尺寸；輸出將以第一張參考圖的比例產生）'}
-        </p>
-      </div>
+      {/* 輸出尺寸與文生圖同一套選擇器；MOSS 畫布需 16 的倍數，其他模型 32 */}
+      <SizePicker
+        snap={isMoss ? 16 : 32}
+        hint={
+          isMoss
+            ? '輸出畫布 = 此尺寸（參考圖會自動縮放配對像素量；比例可與參考圖不同，模型會重新構圖）'
+            : '輸出畫布 = 此尺寸（比例可與參考圖不同，模型會重新構圖）'
+        }
+      />
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">

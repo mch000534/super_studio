@@ -98,7 +98,7 @@ npm run dev          # 開發模式（預設 http://localhost:3000）
 |------|----------|
 | 文生圖 | 提示詞、模型（z-image / Qwen-Image-2.1 / MOSS-Image）、尺寸、步數、seed |
 | 圖生圖 | 提示詞 + 來源圖片 + denoise |
-| 圖片編輯 | 編輯模型（Qwen-Image-2.1 / MOSS-Image）+ 來源圖片（最多 10 張，MOSS 建議 ≤4 張）+ 編輯指令 + 解析度 |
+| 圖片編輯 | 編輯模型（Qwen-Image-2.1 / MOSS-Image）+ 來源圖片（最多 10 張，MOSS 建議 ≤4 張）+ 編輯指令 + 尺寸（與文生圖同一套比例/1K-4K/自訂選擇器，輸出可與參考圖不同比例） |
 | 文生影片 | 提示詞、影片模型（MiniMax H3 標準／Turbo、FastVideo FastH3）、解析度、時長（幀數對齊 17k+5 網格）、fps |
 | 圖生影片 | 提示詞 + 首幀（可選尾幀）+ 影片模型（同上） |
 | 圖片放大 | 來源圖片 + 倍數（2x/4x） |

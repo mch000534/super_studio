@@ -307,21 +307,23 @@ LoadImage(image1..imageN) → QwenImageEdit 節點串（依參考圖數量）
 Qwen-Image-2.1 UNET/CLIP/VAE → KSampler → VAEDecode → SaveImage
 ```
 - prompt 可用 `<image1>`、`<image2>` 引用參考圖；`image1` 為編輯目標。
+- 輸出畫布用獨立 `EmptyLatentImage`（所選 width/height），latent 不取自編碼節點；比例可與參考圖不同，模型會重新構圖。
 - 同一模式在 OpenAI 相容層也可對應 `z-image` 的單圖 img2img（見 §16）。
 
 **圖片編輯（MOSS-Image，Edit LoRA）**
 ```
-LoadImage(image1..imageN) → ImageScaleToTotalPixels(lanczos, ~1.0MP, step 16)
+LoadImage(image1..imageN) → ImageScaleToTotalPixels(lanczos, 畫布像素量, step 16)
 UNETLoader(moss_image_sft_int8_convrot) → LoraLoaderModelOnly(moss_image_edit_lora_rank_64)
   → SkipLayerGuidanceDiTSimple(single_layers="22", 0→1.0)
 CLIPLoader(qwen3.5_9b_w4a8_gptq, type=moss_image) + VAELoader(flux2-vae_small)
 TextEncodeMOSSImageEdit（正/負，各吃參考圖 + VAE，edit_format 必須同值）
-→ EmptyFlux2LatentImage（沿用來源比例）→ KSampler(euler/normal, steps 30, cfg 4)
+→ EmptyFlux2LatentImage（所選 width/height，16 倍數）→ KSampler(euler/normal, steps 30, cfg 4)
 → VAEDecode → SaveImage
 ```
 - 兩個編碼節點 `edit_format` 必須一致且與 LoRA 訓練時相同（預設 `Moss-Image-Edit`）。
 - CFG 固定 4：負向分支對此 LoRA 重要，過低會長出原圖沒有的飾品。
-- `images.image_N` 為 autogrow 輸入，官方建議最多 4 張；參考圖以原尺寸進入模型，靠 `ImageScaleToTotalPixels` 統一到像素預算。
+- `images.image_N` 為 autogrow 輸入，官方建議最多 4 張；參考圖靠 `ImageScaleToTotalPixels` 統一到畫布的像素預算。
+- 兩種編輯模型的輸出尺寸都與文生圖共用同一套選擇器（比例 / 1K-4K / 自訂寬高）；輸出比例可與參考圖不同（已實測無變形）。
 
 **文生音樂（MiniMax Music 3）**
 ```
