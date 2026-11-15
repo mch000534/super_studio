@@ -11,6 +11,8 @@ interface SettingsState {
   llmBaseUrl: string;
   llmApiKey?: string;
   llmModel: string;
+  /** 畫廊每行顯示的媒體數（1–8） */
+  galleryColumns: number;
   setHost: (host: string) => void;
   setAuthHeader: (header?: string) => void;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
@@ -18,6 +20,7 @@ interface SettingsState {
   setLlmBaseUrl: (baseUrl: string) => void;
   setLlmApiKey: (apiKey?: string) => void;
   setLlmModel: (model: string) => void;
+  setGalleryColumns: (columns: number) => void;
 }
 
 export const DEFAULT_HOST = 'http://127.0.0.1:8188';
@@ -54,6 +57,7 @@ export const useSettingsStore = create<SettingsState>()(
       llmBaseUrl: getDefaultLlmBaseUrl(),
       llmApiKey: undefined,
       llmModel: DEFAULT_LLM_MODEL,
+      galleryColumns: 4,
       setHost: (comfyuiHost) => set({ comfyuiHost }),
       setAuthHeader: (authHeader) => set({ authHeader }),
       setTheme: (theme) => set({ theme }),
@@ -61,6 +65,8 @@ export const useSettingsStore = create<SettingsState>()(
       setLlmBaseUrl: (llmBaseUrl) => set({ llmBaseUrl }),
       setLlmApiKey: (llmApiKey) => set({ llmApiKey }),
       setLlmModel: (llmModel) => set({ llmModel }),
+      setGalleryColumns: (galleryColumns) =>
+        set({ galleryColumns: Math.min(8, Math.max(1, Math.round(galleryColumns))) }),
     }),
     {
       name: 'super-studio-settings',
@@ -83,6 +89,7 @@ export const useSettingsStore = create<SettingsState>()(
         llmBaseUrl: s.llmBaseUrl,
         llmApiKey: s.llmApiKey,
         llmModel: s.llmModel,
+        galleryColumns: s.galleryColumns,
       }),
     }
   )

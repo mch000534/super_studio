@@ -7,6 +7,7 @@ import { ImageViewer } from '@/components/gallery/image-viewer';
 import { GeneratingCard } from '@/components/gallery/generating-card';
 import { useGalleryStore } from '@/stores/gallery-store';
 import { useQueueStore } from '@/stores/queue-store';
+import { useSettingsStore } from '@/stores/settings-store';
 import type { MediaItem } from '@/types/workflow';
 
 interface OutputGalleryProps {
@@ -17,6 +18,7 @@ interface OutputGalleryProps {
 export function OutputGallery({ onUpscale, onCancelTask }: OutputGalleryProps) {
   const items = useGalleryStore((s) => s.items);
   const queueTasks = useQueueStore((s) => s.tasks);
+  const columns = useSettingsStore((s) => s.galleryColumns);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   const hasActiveTasks = queueTasks.some(
@@ -37,7 +39,10 @@ export function OutputGallery({ onUpscale, onCancelTask }: OutputGalleryProps) {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+          <div
+            className="grid gap-3"
+            style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+          >
             {items.map((item) => (
               <MediaCard
                 key={item.url}

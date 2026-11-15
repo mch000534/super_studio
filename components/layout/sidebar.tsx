@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { Image as ImageIcon, Images, Wand2, Clapperboard, Film, ZoomIn, ScanLine, Braces, ListTodo, Music, Box, BookOpen } from 'lucide-react';
+import { Image as ImageIcon, Images, Wand2, Clapperboard, Film, ZoomIn, ScanLine, Braces, ListTodo, Music, Box, BookOpen, LayoutGrid } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MODES } from '@/lib/modes';
 import { useSettingsStore } from '@/stores/settings-store';
 import type { Mode } from '@/types/workflow';
 import { useQueueStore, queuePendingCount } from '@/stores/queue-store';
 import { SidebarComfyStatus } from '@/components/layout/sidebar-comfy-status';
+import { Slider } from '@/components/ui/slider';
 
 const ICONS: Record<Mode, React.ComponentType<{ className?: string }>> = {
   text2img: ImageIcon,
@@ -26,6 +27,8 @@ export function Sidebar() {
   const currentMode = useSettingsStore((s) => s.currentMode);
   const setMode = useSettingsStore((s) => s.setMode);
   const queueTasks = useQueueStore((s) => s.tasks);
+  const galleryColumns = useSettingsStore((s) => s.galleryColumns);
+  const setGalleryColumns = useSettingsStore((s) => s.setGalleryColumns);
 
   const pendingCount = queuePendingCount(queueTasks);
 
@@ -54,6 +57,22 @@ export function Sidebar() {
         })}
       </nav>
       <SidebarComfyStatus />
+      <div className="border-t px-3 py-3 space-y-2">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <LayoutGrid className="h-3.5 w-3.5" />
+            <span>畫廊每行張數</span>
+          </div>
+          <span className="font-mono">{galleryColumns}</span>
+        </div>
+        <Slider
+          min={1}
+          max={8}
+          step={1}
+          value={[galleryColumns]}
+          onValueChange={([v]) => setGalleryColumns(v)}
+        />
+      </div>
       <div className="border-t p-3 space-y-1">
         <Link
           href="/queue"
