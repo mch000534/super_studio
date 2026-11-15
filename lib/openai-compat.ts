@@ -17,7 +17,7 @@ import type { FileInfo, HistoryOutput, WorkflowNode } from '@/types/comfyui';
 const DEFAULT_TIMEOUT_MS = 600_000;
 const POLL_INTERVAL_MS = 1000;
 
-export const OPENAI_IMAGE_MODELS = ['z-image', 'qwen-image-2.1'] as const;
+export const OPENAI_IMAGE_MODELS = ['z-image', 'qwen-image-2.1', 'moss-image'] as const;
 export type OpenAIImageModel = (typeof OPENAI_IMAGE_MODELS)[number];
 
 export class OpenAICompatError extends Error {
@@ -299,4 +299,10 @@ export async function buildImageData(
 export function recommendedParams(model: OpenAIImageModel): { steps: number; cfg: number } {
   const family = getImageModelFamily(model);
   return { steps: family.recommended.steps, cfg: family.recommended.cfg };
+}
+
+/** 圖片編輯的建議取樣參數（MOSS-Image Edit LoRA 需要 CFG 4，與文生圖不同）。 */
+export function recommendedEditParams(model: OpenAIImageModel): { steps: number; cfg: number } {
+  const family = getImageModelFamily(model);
+  return family.editRecommended ?? family.recommended;
 }

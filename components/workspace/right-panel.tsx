@@ -25,6 +25,7 @@ import { useHistoryStore } from '@/stores/history-store';
 import { useGenerationStore } from '@/stores/generation-store';
 import { comfyuiClient } from '@/lib/comfyui-client';
 import { getModeMeta } from '@/lib/modes';
+import { getDefaultEditModelId, getImageModelFamily } from '@/lib/image-models';
 import { toast } from '@/hooks/use-toast';
 import type { MediaItem, Mode, GenerationParams } from '@/types/workflow';
 
@@ -370,6 +371,22 @@ function ImgEditControls({ onInterrupt }: { onInterrupt: () => void }) {
 
   const refImages = params.refImages ?? [];
 
+  // 進入編輯模式時，若目前模型不支援指令編輯（例如 text2img 選了 z-image），
+  // 自動切到預設可編輯模型並套用它的建議參數，避免下拉選單顯示與實際不一致。
+  useEffect(() => {
+    const family = getImageModelFamily(params.imageModelId);
+    if (family.supportsEdit) return;
+    const fallback = getImageModelFamily(getDefaultEditModelId());
+    const preset = fallback.editRecommended ?? fallback.recommended;
+    updateParams({ imageModelId: fallback.id, steps: preset.steps, cfg: preset.cfg });
+    // 只在掛載（切換到本模式）時校正一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const editFamily = getImageModelFamily(params.imageModelId);
+  const isMoss = editFamily.kind === 'moss-image';
+  const maxRefs = isMoss ? 4 : 10;
+
   const insertRefToken = (index: number) => {
     const token = `<image${index + 1}>`;
     const ta = promptTextareaRef.current;
@@ -414,14 +431,23 @@ function ImgEditControls({ onInterrupt }: { onInterrupt: () => void }) {
           onUpload={handleUpload}
           onGalleryPick={handleGalleryPick}
           onTileClick={insertRefToken}
-          max={10}
+          max={maxRefs}
         />
         <p className="text-xs text-muted-foreground">
-          可從上方畫廊拖曳圖片至此。第 1 張（image1）為編輯目標，其餘為參考素材；提示詞中用{' '}
-          <code className="font-mono text-[10px]">&lt;image1&gt;</code>、{' '}
-          <code className="font-mono text-[10px]">&lt;image2&gt;</code>… 引用。
+          {isMoss ? (
+            <>
+              可從上方畫廊拖曳圖片至此。第 1 張為編輯目標，最多 4 張（服裝、臉、道具分開給）；指令請只描述要改的部分，例如「把外套改成黑色羊毛大衣，其餘保持不變」。
+            </>
+          ) : (
+            <>
+              可從上方畫廊拖曳圖片至此。第 1 張（image1）為編輯目標，其餘為參考素材；提示詞中用{' '}
+              <code className="font-mono text-[10px]">&lt;image1&gt;</code>、{' '}
+              <code className="font-mono text-[10px]">&lt;image2&gt;</code>… 引用。
+            </>
+          )}
         </p>
       </div>
+      <ImageModelSelector variant="edit" label="編輯模型" />
       <PromptPanel
         placeholder="輸入編輯指令（引用上方參考圖的位置）…"
         textareaRef={promptTextareaRef}

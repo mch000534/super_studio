@@ -1,6 +1,6 @@
 import type { GenerationParams, Mode } from '@/types/workflow';
 import type { WorkflowNode } from '@/types/comfyui';
-import { getImageModelFamily } from '@/lib/image-models';
+import { MOSS_DEFAULT_NEGATIVE, getImageModelFamily } from '@/lib/image-models';
 import { getVideoModelFamily } from '@/lib/video-models';
 
 export interface WorkflowTemplate {
@@ -258,8 +258,12 @@ function withFamilyModels(params: GenerationParams): GenerationParams {
 
 export function buildText2Img(params: GenerationParams): Record<string, WorkflowNode> {
   const familyParams = withFamilyModels(params);
-  if (getImageModelFamily(params.imageModelId).kind === 'qwen-image-2.1') {
+  const kind = getImageModelFamily(params.imageModelId).kind;
+  if (kind === 'qwen-image-2.1') {
     return buildQwenImage21T2i(familyParams);
+  }
+  if (kind === 'moss-image') {
+    return buildMossImageT2i(familyParams);
   }
   return buildZImageT2i(familyParams);
 }
@@ -408,6 +412,252 @@ export function buildImg2Img(params: GenerationParams): Record<string, WorkflowN
       inputs: { filename_prefix: `${PREFIX}-img2img`, images: ['8', 0] },
     },
   };
+}
+
+/**
+ * MOSS-Image 文生圖（OpenMOSS 5B 單流 DiT）。
+ *
+ * 依官方 ComfyUI 範本（MOSS-Image: Text to Image）：
+ * UNETLoader → SkipLayerGuidanceDiTSimple(single_layers 22)
+ *   → CLIPTextEncode ×2 → KSampler(euler/simple) → VAEDecode → SaveImage
+ *
+ * 重點：
+ * - 文字編碼器固定以 CLIPLoader type `moss_image` 載入（Qwen3.5 9B）。
+ * - 畫布用 EmptyFlux2LatentImage，寬高需為 16 的倍數。
+ * - 官方建議 CFG 3（短提示詞 3–6）、euler；模板預設的 25 步偏快，改用更慢的步數。
+ * - SLG 固定第 22 單層，關掉會更「真實」但容易掉細節，這裡維持官方值。
+ * - 提示詞增強器（TextGenerate）需要動態 combo 參數，此處不啟用：直接把使用者的
+ *   提示詞送去編碼，行為可預期、也便於對齊 OpenAI 相容層。
+ */
+export function buildMossImageT2i(params: GenerationParams): Record<string, WorkflowNode> {
+  // MOSS 要求 16 的倍數（不像 z-image/qwen 走 32）
+  const width = Math.min(4096, Math.max(256, Math.round(params.width / 16) * 16));
+  const height = Math.min(4096, Math.max(256, Math.round(params.height / 16) * 16));
+  const family = getImageModelFamily('moss-image');
+
+  return {
+    'moss_unet': {
+      class_type: 'UNETLoader',
+      inputs: {
+        unet_name: params.unetName || family.defaults.unetName,
+        weight_dtype: 'default',
+      },
+    } as WorkflowNode,
+    'moss_slg': {
+      class_type: 'SkipLayerGuidanceDiTSimple',
+      inputs: {
+        model: ['moss_unet', 0],
+        double_layers: '',
+        single_layers: '22',
+        start_percent: 0,
+        end_percent: 0.5,
+      },
+    } as WorkflowNode,
+    'moss_clip': {
+      class_type: 'CLIPLoader',
+      inputs: {
+        clip_name: params.clipName || family.defaults.clipName,
+        type: 'moss_image',
+        device: 'default',
+      },
+    } as WorkflowNode,
+    'moss_vae': {
+      class_type: 'VAELoader',
+      inputs: { vae_name: params.vaeName || family.defaults.vaeName },
+    } as WorkflowNode,
+    'moss_pos': {
+      class_type: 'CLIPTextEncode',
+      inputs: { clip: ['moss_clip', 0], text: params.prompt },
+    } as WorkflowNode,
+    'moss_neg': {
+      class_type: 'CLIPTextEncode',
+      inputs: {
+        clip: ['moss_clip', 0],
+        text: params.negativePrompt?.trim() || MOSS_DEFAULT_NEGATIVE,
+      },
+    } as WorkflowNode,
+    'moss_latent': {
+      class_type: 'EmptyFlux2LatentImage',
+      inputs: { width, height, batch_size: params.batch },
+    } as WorkflowNode,
+    'moss_ksampler': {
+      class_type: 'KSampler',
+      inputs: {
+        model: ['moss_slg', 0],
+        seed: resolveSeed(params.seed),
+        steps: params.steps,
+        cfg: params.cfg ?? 3,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        positive: ['moss_pos', 0],
+        negative: ['moss_neg', 0],
+        latent_image: ['moss_latent', 0],
+        denoise: 1,
+      },
+    } as WorkflowNode,
+    'moss_decode': {
+      class_type: 'VAEDecode',
+      inputs: { samples: ['moss_ksampler', 0], vae: ['moss_vae', 0] },
+    } as WorkflowNode,
+    'moss_save': {
+      class_type: 'SaveImage',
+      inputs: { filename_prefix: `${PREFIX}-moss`, images: ['moss_decode', 0] },
+    } as WorkflowNode,
+  };
+}
+
+/**
+ * MOSS-Image 圖片編輯（Edit LoRA）。
+ *
+ * 依官方 ComfyUI 範本（MOSS-Image: Image Edit）：
+ * LoadImage → ImageScaleToTotalPixels(1.0MP, step 16) → GetImageSize
+ *   → EmptyFlux2LatentImage（沿用來源比例）
+ *   → UNETLoader → LoraLoaderModelOnly(edit lora) → SkipLayerGuidanceDiTSimple
+ *   → TextEncodeMOSSImageEdit ×2（正/負，都吃同一張參考圖 + VAE）
+ *   → KSampler(euler/normal, cfg 4) → VAEDecode → SaveImage
+ *
+ * 重點：
+ * - `edit_format` 兩個編碼節點必須同值，且要與 LoRA 訓練時一致（Moss-Image-Edit）。
+ * - CFG 必須維持 4.0：負向分支對這支 LoRA 很重要，太低會長出原圖沒有的飾品。
+ * - 參數 `images.image_N` 是 autogrow 輸入，最多 10 個槽（官方建議 4 張以內）。
+ */
+export function buildMossImageEdit(params: GenerationParams): Record<string, WorkflowNode> {
+  const family = getImageModelFamily('moss-image');
+  const refs = (params.refImages ?? []).filter(Boolean).slice(0, 10);
+  const editFormat = params.mossEditFormat || 'Moss-Image-Edit';
+  // 參考圖進入擴散模型時就是原尺寸，這裡統一縮到像素預算。
+  // 面板的 resolution 是「長邊」，換算成 MP：1024 → 1.0 MP（官方建議值）。
+  const edge = params.resolution ?? 1024;
+  const megapixels = Math.min(4, Math.max(0.25, Math.round((edge / 1024) ** 2 * 100) / 100));
+
+  const nodes: Record<string, WorkflowNode> = {
+    'moss_unet': {
+      class_type: 'UNETLoader',
+      inputs: {
+        unet_name: params.unetName || family.defaults.unetName,
+        weight_dtype: 'default',
+      },
+    } as WorkflowNode,
+    'moss_lora': {
+      class_type: 'LoraLoaderModelOnly',
+      inputs: {
+        model: ['moss_unet', 0],
+        // 固定用家族的 Edit LoRA：params.loraName 是影片 Turbo LoRA，別混用
+        lora_name: family.editLoraName || 'moss_image_edit_lora_rank_64_bf16.safetensors',
+        strength_model: 1,
+      },
+    } as WorkflowNode,
+    'moss_slg': {
+      class_type: 'SkipLayerGuidanceDiTSimple',
+      inputs: {
+        model: ['moss_lora', 0],
+        double_layers: '',
+        single_layers: '22',
+        start_percent: 0,
+        end_percent: 1,
+      },
+    } as WorkflowNode,
+    'moss_clip': {
+      class_type: 'CLIPLoader',
+      inputs: {
+        clip_name: params.clipName || family.defaults.clipName,
+        type: 'moss_image',
+        device: 'default',
+      },
+    } as WorkflowNode,
+    'moss_vae': {
+      class_type: 'VAELoader',
+      inputs: { vae_name: params.vaeName || family.defaults.vaeName },
+    } as WorkflowNode,
+  };
+
+  const posInputs: Record<string, unknown> = {
+    clip: ['moss_clip', 0],
+    prompt: params.prompt,
+    edit_format: editFormat,
+    image_strength: 1,
+    vae: ['moss_vae', 0],
+  };
+  const negInputs: Record<string, unknown> = {
+    clip: ['moss_clip', 0],
+    prompt: params.negativePrompt?.trim() || MOSS_DEFAULT_NEGATIVE,
+    edit_format: editFormat,
+    image_strength: 1,
+    vae: ['moss_vae', 0],
+  };
+
+  if (refs.length === 0) {
+    // 理論上不會走到這裡（送出前已檢查），保底讓工作流仍可建立
+    nodes['moss_pos'] = { class_type: 'CLIPTextEncode', inputs: { clip: ['moss_clip', 0], text: params.prompt } } as WorkflowNode;
+    nodes['moss_neg'] = {
+      class_type: 'CLIPTextEncode',
+      inputs: { clip: ['moss_clip', 0], text: params.negativePrompt?.trim() || MOSS_DEFAULT_NEGATIVE },
+    } as WorkflowNode;
+  } else {
+    // 第一張是編輯目標，其餘為參考素材；全部先縮放再同時餵給兩個編碼節點
+    refs.forEach((name, idx) => {
+      const loadId = `moss_ref_${idx + 1}`;
+      const scaleId = `moss_ref_scale_${idx + 1}`;
+      nodes[loadId] = { class_type: 'LoadImage', inputs: { image: name } } as WorkflowNode;
+      nodes[scaleId] = {
+        class_type: 'ImageScaleToTotalPixels',
+        inputs: {
+          image: [loadId, 0],
+          upscale_method: 'lanczos',
+          megapixels,
+          resolution_steps: 16,
+        },
+      } as WorkflowNode;
+      posInputs[`images.image_${idx}`] = [scaleId, 0];
+      negInputs[`images.image_${idx}`] = [scaleId, 0];
+    });
+
+    nodes['moss_size'] = {
+      class_type: 'GetImageSize',
+      inputs: { image: ['moss_ref_scale_1', 0] },
+    } as WorkflowNode;
+    nodes['moss_latent'] = {
+      class_type: 'EmptyFlux2LatentImage',
+      inputs: { width: ['moss_size', 0], height: ['moss_size', 1], batch_size: 1 },
+    } as WorkflowNode;
+
+    nodes['moss_pos'] = {
+      class_type: 'TextEncodeMOSSImageEdit',
+      inputs: posInputs,
+    } as WorkflowNode;
+    nodes['moss_neg'] = {
+      class_type: 'TextEncodeMOSSImageEdit',
+      inputs: negInputs,
+    } as WorkflowNode;
+  }
+
+  nodes['moss_ksampler'] = {
+    class_type: 'KSampler',
+    inputs: {
+      model: ['moss_slg', 0],
+      seed: resolveSeed(params.seed),
+      steps: params.steps,
+      cfg: params.cfg ?? 4,
+      sampler_name: 'euler',
+      scheduler: 'normal',
+      positive: ['moss_pos', 0],
+      negative: ['moss_neg', 0],
+      latent_image: ['moss_latent', 0],
+      denoise: 1,
+    },
+  } as WorkflowNode;
+
+  nodes['moss_decode'] = {
+    class_type: 'VAEDecode',
+    inputs: { samples: ['moss_ksampler', 0], vae: ['moss_vae', 0] },
+  } as WorkflowNode;
+
+  nodes['moss_save'] = {
+    class_type: 'SaveImage',
+    inputs: { filename_prefix: `${PREFIX}-moss-edit`, images: ['moss_decode', 0] },
+  } as WorkflowNode;
+
+  return nodes;
 }
 
 export function buildQwenImage21T2i(params: GenerationParams): Record<string, WorkflowNode> {
@@ -564,6 +814,14 @@ export function buildQwenImage21Edit(params: GenerationParams): Record<string, W
   } as WorkflowNode;
 
   return nodes;
+}
+
+/** 圖片編輯：依所選模型分流到 Qwen-Image-2.1 或 MOSS-Image Edit。 */
+export function buildImgEdit(params: GenerationParams): Record<string, WorkflowNode> {
+  if (getImageModelFamily(params.imageModelId).kind === 'moss-image') {
+    return buildMossImageEdit(params);
+  }
+  return buildQwenImage21Edit(params);
 }
 
 export function buildText2Vid(params: GenerationParams): Record<string, WorkflowNode> {
@@ -1109,7 +1367,7 @@ export function buildCustom(params: GenerationParams): Record<string, WorkflowNo
 const templates: Record<Mode, WorkflowTemplate> = {
   text2img: { name: 'Text to Image', mode: 'text2img', build: buildText2Img },
   img2img: { name: 'Z-Image-Turbo (Img2Img)', mode: 'img2img', build: buildImg2Img },
-  img_edit: { name: 'Qwen-Image-2.1 (Image Edit)', mode: 'img_edit', build: buildQwenImage21Edit },
+  img_edit: { name: 'Image Edit (Qwen-Image-2.1 / MOSS-Image)', mode: 'img_edit', build: buildImgEdit },
   text2vid: { name: 'MiniMax H3 / FastVideo FastH3', mode: 'text2vid', build: buildText2Vid },
   img2vid: {
     name: 'MiniMax H3 / FastVideo FastH3 (Img2Vid)',

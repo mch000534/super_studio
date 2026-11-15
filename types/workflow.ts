@@ -42,9 +42,11 @@ export interface GenerationParams {
   denoise?: number;
   imageName?: string;
 
-  // qwen-image-2.1 image edit
+  // qwen-image-2.1 / moss-image image edit
   refImages?: string[];
   resolution?: number;
+  /** MOSS-Image Edit LoRA 的訓練佈局（兩個編碼節點必須同值）。 */
+  mossEditFormat?: 'Moss-Image-Edit' | 'ai-toolkit' | 'ai-toolkit (kv_cache off)';
 
   // video
   duration?: number;

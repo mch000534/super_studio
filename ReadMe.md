@@ -49,6 +49,7 @@ docs/           需求、規格、UI/UX 與開發任務清單
 |------|--------|
 | 圖片 UNET | `z_image_turbo_bf16.safetensors` |
 | 圖片編輯 UNET（Qwen-Image-2.1） | `qwen_image_2.1_int8_convrot.safetensors`、`qwen3vl_8b_int8_convrot.safetensors`、`qwen_image_2.1_vae_bf16.safetensors` |
+| 圖片 UNET / 編輯（MOSS-Image） | `moss_image_sft_int8_convrot.safetensors`、`qwen3.5_9b_w4a8_gptq.safetensors`、`flux2-vae_small.safetensors`、`moss_image_edit_lora_rank_64_bf16.safetensors`（LoRA） |
 | 影片 UNET（MiniMax H3） | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` |
 | 影片 UNET（FastVideo FastH3） | `fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors` |
 | 放大 UNET | `seedvr2_3b_int8_convrot.safetensors` |
@@ -95,9 +96,9 @@ npm run dev          # 開發模式（預設 http://localhost:3000）
 
 | 模式 | 需要輸入 |
 |------|----------|
-| 文生圖 | 提示詞、模型（z-image / Qwen-Image-2.1）、尺寸、步數、seed |
+| 文生圖 | 提示詞、模型（z-image / Qwen-Image-2.1 / MOSS-Image）、尺寸、步數、seed |
 | 圖生圖 | 提示詞 + 來源圖片 + denoise |
-| 圖片編輯 | 來源圖片（最多 10 張）+ 編輯指令 + 解析度 |
+| 圖片編輯 | 編輯模型（Qwen-Image-2.1 / MOSS-Image）+ 來源圖片（最多 10 張，MOSS 建議 ≤4 張）+ 編輯指令 + 解析度 |
 | 文生影片 | 提示詞、影片模型（MiniMax H3 標準／Turbo、FastVideo FastH3）、解析度、時長（幀數對齊 17k+5 網格）、fps |
 | 圖生影片 | 提示詞 + 首幀（可選尾幀）+ 影片模型（同上） |
 | 圖片放大 | 來源圖片 + 倍數（2x/4x） |
@@ -112,7 +113,7 @@ npm run dev          # 開發模式（預設 http://localhost:3000）
 
 | 端點 | 說明 |
 |------|------|
-| `GET /api/openai/v1/models` | 列出可用模型（`z-image`、`qwen-image-2.1`） |
+| `GET /api/openai/v1/models` | 列出可用模型（`z-image`、`qwen-image-2.1`、`moss-image`） |
 | `POST /api/openai/v1/images/generations` | 文生圖（JSON body） |
 | `POST /api/openai/v1/images/edits` | 圖生圖／圖片編輯（multipart form，欄位 `image` 可多張） |
 

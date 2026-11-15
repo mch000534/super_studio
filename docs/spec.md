@@ -309,6 +309,20 @@ Qwen-Image-2.1 UNET/CLIP/VAE → KSampler → VAEDecode → SaveImage
 - prompt 可用 `<image1>`、`<image2>` 引用參考圖；`image1` 為編輯目標。
 - 同一模式在 OpenAI 相容層也可對應 `z-image` 的單圖 img2img（見 §16）。
 
+**圖片編輯（MOSS-Image，Edit LoRA）**
+```
+LoadImage(image1..imageN) → ImageScaleToTotalPixels(lanczos, ~1.0MP, step 16)
+UNETLoader(moss_image_sft_int8_convrot) → LoraLoaderModelOnly(moss_image_edit_lora_rank_64)
+  → SkipLayerGuidanceDiTSimple(single_layers="22", 0→1.0)
+CLIPLoader(qwen3.5_9b_w4a8_gptq, type=moss_image) + VAELoader(flux2-vae_small)
+TextEncodeMOSSImageEdit（正/負，各吃參考圖 + VAE，edit_format 必須同值）
+→ EmptyFlux2LatentImage（沿用來源比例）→ KSampler(euler/normal, steps 30, cfg 4)
+→ VAEDecode → SaveImage
+```
+- 兩個編碼節點 `edit_format` 必須一致且與 LoRA 訓練時相同（預設 `Moss-Image-Edit`）。
+- CFG 固定 4：負向分支對此 LoRA 重要，過低會長出原圖沒有的飾品。
+- `images.image_N` 為 autogrow 輸入，官方建議最多 4 張；參考圖以原尺寸進入模型，靠 `ImageScaleToTotalPixels` 統一到像素預算。
+
 **文生音樂（MiniMax Music 3）**
 ```
 UNETLoader(minimax_music3_dit_fp16) + CLIPLoader(type=minimax) + VAELoader(minimax_music3_dav)
@@ -629,7 +643,7 @@ timeout = OPENAI_COMPAT_TIMEOUT_MS（毫秒，預設 600000）
 
 | 欄位 | 說明 |
 |------|------|
-| `model` | `z-image`（預設）或 `qwen-image-2.1`；未知值回 404 `model_not_found` |
+| `model` | `z-image`（預設）、`qwen-image-2.1` 或 `moss-image`；未知值回 404 `model_not_found` |
 | `prompt` | 必填 |
 | `n` | 張數 1–4，預設 1 |
 | `size` | `寬x高`，64–4096；`auto` 等同預設 1024x1024 |
@@ -637,7 +651,7 @@ timeout = OPENAI_COMPAT_TIMEOUT_MS（毫秒，預設 600000）
 | `seed` / `steps` / `cfg` / `negative_prompt` | 擴充欄位；steps/cfg 未給時依模型建議值 |
 | `denoise` | 僅 edits；z-image 單圖 img2img 的改動幅度（預設 0.6） |
 
-edits 以 `model` 決定工作流：`qwen-image-2.1` 走多參考圖指令編輯，其餘走 `z-image` img2img。
+edits 以 `model` 決定工作流：`qwen-image-2.1` 與 `moss-image` 各走自己的指令編輯圖（MOSS 走 Edit LoRA，steps/cfg 取 `editRecommended`＝30/4），其餘走 `z-image` img2img。
 
 ### 16.5 執行流程與回應
 

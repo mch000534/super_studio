@@ -7,12 +7,12 @@ export interface ModeMeta {
 }
 
 export const MODES: ModeMeta[] = [
-  { id: 'text2img', label: '文生圖', description: '以文字提示詞生成圖片（z-image / Qwen-Image-2.1）' },
+  { id: 'text2img', label: '文生圖', description: '以文字提示詞生成圖片（z-image / Qwen-Image-2.1 / MOSS-Image）' },
   { id: 'img2img', label: 'z-image_i2i', description: '以圖片為參考生成新圖片' },
   {
     id: 'img_edit',
     label: '圖片編輯',
-    description: '上傳最多 10 張參考圖，以文字指令編輯（image1 為編輯目標；支援 <image1>、<image2>… 引用）',
+    description: '上傳最多 10 張參考圖，以文字指令編輯（模型可選 Qwen-Image-2.1 / MOSS-Image；image1 為編輯目標）',
   },
   {
     id: 'text2vid',

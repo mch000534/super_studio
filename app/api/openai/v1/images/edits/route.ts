@@ -10,13 +10,13 @@ import {
   parseSize,
   preflightResponse,
   queueWorkflow,
-  recommendedParams,
+  recommendedEditParams,
   resolveComfyTarget,
   resolveModel,
   uploadInputImage,
   waitForImages,
 } from '@/lib/openai-compat';
-import { buildImg2Img, buildQwenImage21Edit } from '@/lib/workflow-templates';
+import { buildImg2Img, buildMossImageEdit, buildQwenImage21Edit } from '@/lib/workflow-templates';
 import type { GenerationParams } from '@/types/workflow';
 
 export function OPTIONS() {
@@ -35,6 +35,7 @@ export function OPTIONS() {
  * 模型對應：
  * - qwen-image-2.1：多參考圖指令編輯（image1 為編輯目標，prompt 可用
  *   <image1>、<image2>… 引用）
+ * - moss-image：MOSS-Image Edit LoRA 指令編輯（image1 為編輯目標，CFG 固定 4）
  * - z-image（預設）：單圖 img2img，以 denoise 控制改動幅度
  */
 export async function POST(req: NextRequest) {
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
     // base64，許多客戶端（如 Cherry Studio / @ai-sdk/openai-compatible）的
     // zod schema 也只接受 b64_json，收到 url 會判定「No image generated」。
     const responseFormat = parseResponseFormat(form.get('response_format'), 'b64_json');
-    const defaults = recommendedParams(model);
+    const defaults = recommendedEditParams(model);
 
     const denoise = optionalNumber(form.get('denoise'), 'denoise');
     if (denoise !== undefined && (denoise < 0 || denoise > 1)) {
@@ -104,6 +105,13 @@ export async function POST(req: NextRequest) {
     let workflow;
     if (model === 'qwen-image-2.1') {
       workflow = buildQwenImage21Edit({
+        ...baseParams,
+        mode: 'img_edit',
+        refImages,
+        resolution: width,
+      });
+    } else if (model === 'moss-image') {
+      workflow = buildMossImageEdit({
         ...baseParams,
         mode: 'img_edit',
         refImages,

@@ -23,7 +23,19 @@ interface SettingsState {
 export const DEFAULT_HOST = 'http://127.0.0.1:8188';
 export const DEFAULT_LLM_MODEL = 'qwen3-vl:4b';
 
+/**
+ * 環境變數指定的 ComfyUI 位址（可選）：`NEXT_PUBLIC_COMFYUI_HOST` 會內聯到前端、
+ * 也可在伺服器端讀取；`COMFYUI_HOST` 僅伺服器端（OpenAI 相容層）可見。
+ * 有設定時優先於「目前主機名稱 + 8188」的推導結果。
+ */
+function envHost(): string | undefined {
+  const raw = process.env.NEXT_PUBLIC_COMFYUI_HOST || process.env.COMFYUI_HOST;
+  return raw ? raw.replace(/\/+$/, '') : undefined;
+}
+
 export function getDefaultHost(): string {
+  const fromEnv = envHost();
+  if (fromEnv) return fromEnv;
   if (typeof window === 'undefined' || !window.location.hostname) return DEFAULT_HOST;
   return `http://${window.location.hostname}:8188`;
 }

@@ -5,6 +5,7 @@ import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useGenerationStore } from '@/stores/generation-store';
+import { getImageModelFamily } from '@/lib/image-models';
 
 function randomSeed() {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -13,23 +14,29 @@ function randomSeed() {
 export function EditControls() {
   const params = useGenerationStore((s) => s.params);
   const updateParams = useGenerationStore((s) => s.updateParams);
+  const family = getImageModelFamily(params.imageModelId);
+  const isMoss = family.kind === 'moss-image';
+
+  const resolution = params.resolution ?? 1024;
 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label>輸出解析度</Label>
-          <span className="font-mono text-xs text-muted-foreground">{params.resolution ?? 1024}</span>
+          <span className="font-mono text-xs text-muted-foreground">{resolution}</span>
         </div>
         <Slider
           min={512}
           max={2048}
           step={32}
-          value={[params.resolution ?? 1024]}
+          value={[resolution]}
           onValueChange={([v]) => updateParams({ resolution: v })}
         />
         <p className="text-xs text-muted-foreground">
-          參考圖縮放至約此像素預算（0 時保持原尺寸；輸出將以第一張參考圖的比例產生）
+          {isMoss
+            ? '參考圖縮放至約此長邊（1.0 MP 上下最佳；輸出會沿用第一張參考圖的比例）'
+            : '參考圖縮放至約此像素預算（0 時保持原尺寸；輸出將以第一張參考圖的比例產生）'}
         </p>
       </div>
 
@@ -59,7 +66,11 @@ export function EditControls() {
           value={[params.cfg]}
           onValueChange={([v]) => updateParams({ cfg: v })}
         />
-        <p className="text-xs text-muted-foreground">官方建議保持 1；僅在搭配負向提示詞時提高</p>
+        <p className="text-xs text-muted-foreground">
+          {isMoss
+            ? 'MOSS Edit LoRA 官方建議維持 4：太低會冒出原圖沒有的飾品（項鍊、耳環）'
+            : '官方建議保持 1；僅在搭配負向提示詞時提高'}
+        </p>
       </div>
 
       <div className="space-y-1.5">
